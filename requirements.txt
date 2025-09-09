@@ -1,0 +1,19 @@
+# ==========================================================
+# requirements.txt for AI Solver Backend (V1.2 Final Minimal Version)
+# ==========================================================
+
+# --- Core Web Framework ---
+fastapi
+uvicorn
+gunicorn
+
+# --- Core AI APIs ---
+openai # For Kimi
+dashscope # For Tongyi Qianwen
+
+# --- Core OCR Library ---
+# pix2text 会自动安装 torch, numpy, Pillow, opencv 等大量依赖
+pix2text
+
+# --- Utility Libraries ---
+python-dotenv
