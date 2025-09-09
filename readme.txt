@@ -27,7 +27,7 @@
    b. **导航到后端目录**:
       ```bash
       cd path/to/your/project/ai-solver-mvp/backend
-      cd "C:\Users\hxm\有用的东西\ai-solver-mvp\backend"
+      例如cd "C:\Users\hxm\有用的东西\ai-solver-mvp\backend"
       ```
 
    c. **激活Python虚拟环境**:
@@ -52,7 +52,7 @@
    b. **导航到前端目录**:
       ```bash
       cd path/to/your/project/ai-solver-mvp/frontend/vite-project
-      cd "C:\Users\hxm\有用的东西\ai-solver-mvp\frontend\vite-project"
+      例如cd "C:\Users\hxm\有用的东西\ai-solver-mvp\frontend\vite-project"
       ```
 
    c. **启动Vite开发服务器**:
