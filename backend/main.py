@@ -1,232 +1,47 @@
-# # ==============================================================================
-# # 完整 main.py - 【V6.5 灵魂注入最终版】
-# # ==============================================================================
-
-# # --- Python标准库 ---
-# import os
-# import io
-# import base64
-# import re
-# import uuid
-# import contextlib
-
-# # --- 第三方库 ---
-# from fastapi import FastAPI, File, UploadFile, HTTPException
-# from fastapi.staticfiles import StaticFiles
-# from fastapi.middleware.cors import CORSMiddleware
-# from PIL import Image
-# from pix2text import Pix2Text
-# from dotenv import load_dotenv
-
-# # --- AI库 (根据官方推荐的兼容模式) ---
-# from openai import OpenAI  # 用于调用Kimi
-# import dashscope             # 通义千问官方SDK
-
-# # --- 1. 初始化 ---
-# load_dotenv()
-# app = FastAPI()
-
-# print("正在初始化 Pix2Text...")
-# p2t = Pix2Text()
-# print("Pix2Text 初始化完成。")
-
-# print("正在初始化Kimi客户端 (OpenAI兼容模式)...")
-# try:
-#     kimi_client = OpenAI(
-#         api_key=os.getenv("MOONSHOT_API_KEY"),
-#         base_url="https://api.moonshot.cn/v1",
-#     )
-#     if not os.getenv("MOONSHOT_API_KEY"): raise ValueError("API Key not found in .env")
-#     print("Kimi客户端初始化成功。")
-# except Exception as e:
-#     print(f"!!! 初始化Kimi客户端失败，请检查.env文件中的MOONSHOT_API_KEY: {e}")
-#     kimi_client = None
-
-# print("正在配置通义千问API Key...")
-# try:
-#     dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
-#     if not dashscope.api_key: raise ValueError("API Key not found in .env")
-#     print("通义千问API Key配置成功。")
-# except Exception as e:
-#     print(f"!!! 配置通义千问API Key失败，请检查.env文件中的DASHSCOPE_API_KEY: {e}")
-# # ==============================================================================
-# # 完整 main.py - 第二部分: FastAPI配置
-# # ==============================================================================
-
-# # --- 2. 静态文件目录与CORS配置 ---
-# GENERATED_IMAGES_DIR = "generated_images"
-# os.makedirs(GENERATED_IMAGES_DIR, exist_ok=True)
-# app.mount("/static", StaticFiles(directory=GENERATED_IMAGES_DIR), name="static")
-
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
-
-# @app.get("/")
-# def read_root():
-#     return {"message": "AI解题后端服务正在运行 (V6.5 灵魂注入版)"}
-# # ==============================================================================
-# # 完整 main.py - 第三部分: 核心API接口
-# # ==============================================================================
-# @app.post("/solve")
-# async def solve_from_image(file: UploadFile = File(...)):
-#     if not kimi_client or not dashscope.api_key:
-#         raise HTTPException(status_code=500, detail="核心AI服务客户端未成功初始化，请检查后端日志和API Keys。")
-
-#     temp_image_path = f"temp_{uuid.uuid4()}.png"
-#     try:
-#         image_bytes = await file.read()
-        
-#         # --- A路: Pix2Text OCR ---
-#         print("\n--- [A路] 开始Pix2Text OCR识别 ---")
-#         question_text = p2t.recognize(Image.open(io.BytesIO(image_bytes)), return_text=True)
-#         print(f"--- [A路] 识别结果: {question_text[:100].strip()}...")
-        
-#         # --- B路: 通义千问 qwen-vl-max 进行图形理解 ---
-#         print("\n--- [B路] 开始通义千问Vision图形理解 ---")
-#         vision_prompt = "请用简洁的语言描述这张图片中的几何图形信息（顶点、关系、已知条件等），忽略所有文字。"
-        
-#         with open(temp_image_path, "wb") as f:
-#             f.write(image_bytes)
-            
-#         messages = [{
-#             'role': 'user',
-#             'content': [
-#                 {'text': vision_prompt},
-#                 {'image': f'file://{os.path.abspath(temp_image_path)}'}
-#             ]
-#         }]
-        
-#         vision_response = dashscope.MultiModalConversation.call(model='qwen-vl-max', messages=messages)
-        
-#         if vision_response.status_code != 200:
-#             raise Exception(f"通义千问API调用失败: Code {vision_response.status_code}, Message: {vision_response.message}")
-
-#         raw_content_list = vision_response.output.choices[0].message.content
-#         geometry_description = ""
-#         if isinstance(raw_content_list, list):
-#             for part in raw_content_list:
-#                 if part.get("text"):
-#                     geometry_description = part["text"]
-#                     break
-#         elif isinstance(raw_content_list, str):
-#             geometry_description = raw_content_list
-        
-#         if not geometry_description:
-#             print("--- [B路] 通义千问未返回有效的文本描述。")
-#         else:
-#             print(f"--- [B路] 通义千问描述结果: {geometry_description[:100].strip()}...")
-        
-#         # --- C路: 【灵魂注入版Prompt】 ---
-#         print("\n--- [C路] 开始信息融合并调用Kimi ---")
-#         final_prompt = f"""
-#         **背景情景**: 你是一位非常有经验和亲和力的数学老师，正在为一名有些困惑的学生进行一对一辅导。你的目标不仅是给出答案，更是要用循循诱导的方式，让学生彻底理解解题的思路和方法。
-
-#         **你的教学风格**:
-#         *   **亲切自然**: 使用“好的，同学”、“我们一起来看”、“首先，我们要明确...”这样的口吻，就像在和学生面对面交流。
-#         *   **聚焦思路**: 在给出具体计算前，先用一两句话点明这一步的“核心思路”或“关键公式”，让学生知道为什么这么做。
-#         *   **自信从容**: 你是老师，已经对答案了然于胸。请直接展示正确、流畅的推导过程。**绝对不要**在回答中出现“我算错了”、“让我们重新检查”、“这里可能存在误解”等自我怀疑或暴露思考过程的语言。你只需要呈现最终的、完美的教学内容。
-#         *   **详尽完整**: **绝对不能**以任何理由省略任何关键的证明或计算步骤。每一个问题都必须得到完整的解答。
-
-#         **输出格式**:
-#         *   使用标准的Markdown来组织段落和列表。
-#         *   所有数学变量、符号和公式，都必须严格使用标准的LaTeX语法包裹（行内公式用`$...$`，块级公式用`$$...$$`）。
-
-#         ---
-#         **【辅导材料】**
-
-#         [学生遇到的题目 - 文字与公式]:
-#         {question_text}
-
-#         [学生遇到的题目 - 图形信息]:
-#         {geometry_description}
-
-#         ---
-#         好了，老师，这位同学正在期待你的讲解。请开始吧！
-#         """
-        
-#         # 调用Kimi API
-#         solution_response = kimi_client.chat.completions.create(
-#             model="moonshot-v1-32k",
-#             messages=[
-#                 {"role": "system", "content": "你是一位顶级的、富有同理心的数学家教，擅长将复杂问题讲得清晰易懂。"},
-#                 {"role": "user", "content": final_prompt}
-#             ],
-#             temperature=0.3,
-#             max_tokens=8192
-#         )
-#         raw_solution_markdown = solution_response.choices[0].message.content
-        
-#         # --- D路: 直接返回原始输出 ---
-#         print("\n--- [D路] AI返回原始答案，交由前端处理格式 ---")
-#         return {"solution": raw_solution_markdown}
-
-#     except Exception as e:
-#         print(f"!!! 发生严重错误 !!!")
-#         print(f"错误类型: {type(e).__name__}")
-#         print(f"错误详情: {e}")
-#         raise HTTPException(status_code=500, detail=f"处理时发生错误: {str(e)}")
-#     finally:
-#         # 无论成功或失败，都确保临时文件被删除
-#         if os.path.exists(temp_image_path):
-#             os.remove(temp_image_path)
-
-
-
 # ==============================================================================
-# 完整 main.py - 【V10.0 最终架构版，AI规划+计算机执行+AI总结】
+# 完整 main.py - 【V12.0 终极教师版】
 # ==============================================================================
 
-# --- Python标准库 ---
-# --- 【核心修复】: 在所有import之前，设置环境变量禁用多进程 ---
+# --- 【核心】: 在所有import之前，设置环境变量禁用多进程 ---
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
+
+# --- Python标准库 ---
 import io
 import base64
+import cv2
 import re
 import uuid
-import contextlib
+import numpy as np
+
+
 
 # --- 第三方库 ---
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image
+from fastapi.responses import PlainTextResponse
+from PIL import Image, ImageOps
 from pix2text import Pix2Text
 from dotenv import load_dotenv
 
 # --- AI库 ---
-from openai import OpenAI  # 用于调用Kimi
-import dashscope             # 通义千问官方SDK
-
-# --- 数学计算库 ---
-import sympy as sp
-import numpy as np
+from openai import OpenAI
+import dashscope
 
 # --- 1. 初始化 ---
 load_dotenv()
 app = FastAPI()
 
-# print("正在初始化 Pix2Text...")
-# # --- 【核心修复】: 强制指定使用CPU ---
-# p2t = Pix2Text(device='cpu') 
-# print("Pix2Text 初始化完成，已强制使用CPU模式。")
-
-# 【核心修复】: 只在全局定义一个空的p2t变量
+# 懒加载 Pix2Text
 p2t = None
-
-# 【核心修复】: 创建一个函数来处理耗时的初始化
 def initialize_pix2text():
     global p2t
     if p2t is None:
-        print("首次请求：正在初始化 Pix2Text (这可能需要一些时间)...")
-        # 强制指定缓存目录到/tmp，这是一个保证可写的临时目录
+        print("首次请求：正在以安全模式初始化 Pix2Text...")
+        # 在云环境中，/tmp是保证可写的临时目录
         cache_dir = "/tmp/pix2text_cache"
         os.makedirs(cache_dir, exist_ok=True)
         p2t = Pix2Text(device='cpu', root=cache_dir)
@@ -241,7 +56,7 @@ try:
     if not os.getenv("MOONSHOT_API_KEY"): raise ValueError("API Key not found in .env")
     print("Kimi客户端初始化成功。")
 except Exception as e:
-    print(f"!!! 初始化Kimi客户端失败，请检查.env文件中的MOONSHOT_API_KEY: {e}")
+    print(f"!!! 初始化Kimi客户端失败: {e}")
     kimi_client = None
 
 print("正在配置通义千问API Key...")
@@ -250,13 +65,133 @@ try:
     if not dashscope.api_key: raise ValueError("API Key not found in .env")
     print("通义千问API Key配置成功。")
 except Exception as e:
-    print(f"!!! 配置通义千问API Key失败，请检查.env文件中的DASHSCOPE_API_KEY: {e}")
+    print(f"!!! 配置通义千问API Key失败: {e}")
+    
+    
+# --- 2. 核心辅助函数 (来自Kimi的建议) ---
+
+def image_preprocess_v2(image_bytes: bytes, max_size: int = 2048) -> Image.Image:
+    """
+    一个工程级的图片预处理流水线。
+    :param image_bytes: 原始图片字节流
+    :param max_size: 图片长边的最大尺寸
+    :return: 经过优化处理的PIL Image对象 (灰度图)
+    """
+    try:
+        # 1. 从字节流加载图片 (使用OpenCV)
+        nparr = np.frombuffer(image_bytes, np.uint8)
+        img_cv = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        # 2. 尺寸归一化
+        h, w = img_cv.shape[:2]
+        if max(h, w) > max_size:
+            scale = max_size / max(h, w)
+            img_cv = cv2.resize(img_cv, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
+        # 3. 转换为灰度图
+        gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+
+        # 4. 角度校正 (Deskew)
+        # 这是一个简化的实现，基于寻找最小面积的包围矩形
+        coords = np.column_stack(np.where(gray < 128))
+        angle = cv2.minAreaRect(coords)[-1]
+        if angle < -45:
+            angle = -(90 + angle)
+        else:
+            angle = -angle
+        
+        if abs(angle) > 1: # 只对倾斜超过1度的图片进行校正
+            (h, w) = gray.shape[:2]
+            center = (w // 2, h // 2)
+            M = cv2.getRotationMatrix2D(center, angle, 1.0)
+            gray = cv2.warpAffine(gray, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+            print(f"--- 图片已自动校正角度: {angle:.2f} 度 ---")
+
+        # 5. 降噪 (使用高斯模糊)
+        blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+        # 6. 智能自适应二值化 (处理光照不均)
+        # ADAPTIVE_THRESH_GAUSSIAN_C 效果通常比 MEAN_C 更好
+        binary = cv2.adaptiveThreshold(
+            blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, 11, 2
+        )
+
+        # 7. (可选) 锐化 - 拉普拉斯算子
+        sharpened = cv2.Laplacian(binary, cv2.CV_64F)
+        sharpened = np.uint8(np.clip(binary - 0.5 * sharpened, 0, 255))
+
+        # 8. 将处理后的OpenCV图像转回PIL Image对象
+        img_pil = Image.fromarray(binary)
+        
+        return img_pil
+
+    except Exception as e:
+        print(f"!!! 图片预处理失败: {e}. 将使用原始图片进行识别。")
+        # 如果预处理失败，优雅降级，返回原始的灰度图
+        return Image.open(io.BytesIO(image_bytes)).convert('L')
+
+def ocr_text_clean_v2(raw_text: str) -> str:
+    """
+    一个工程级的、多阶段的OCR文本清洗函数。
+    """
+    # 检查输入是否为字符串
+    if not isinstance(raw_text, str):
+        print(f"!!! 文本清洗函数收到非字符串类型: {type(raw_text)}，将返回空字符串。")
+        return ""
+    
+    # --- 阶段1: 基础字符归一化 ---
+    # 替换所有中文标点和常见错认字符
+    replacements_char = {
+        '（': '(', '）': ')', '【': '[', '】': ']', '，': ',', '。': '.',
+        '＋': '+', '－': '-', '×': '*', '÷': '/', '＝': '=',
+        'α': '\\alpha', 'β': '\\beta', 'γ': '\\gamma', 'θ': '\\theta', 'π': '\\pi',
+        'Δ': '\\Delta', 'Ω': '\\Omega',
+        '≤': '\\leq', '≥': '\\geq', '≠': '\\neq',
+        '∈': '\\in', '∀': '\\forall', '∃': '\\exists',
+        '→': '\\rightarrow',
+        '⊥': '\\perp',
+    }
+    for old, new in replacements_char.items():
+        raw_text = raw_text.replace(old, new)
+        
+    cleaned_text = raw_text
+    
+    # --- 阶段2: 基于模式的通用修复 (高频错误) ---
+    # 使用正则表达式，按优先级顺序执行
+    # (key是正则表达式, value是替换格式)
+    replacements_pattern = {
+        # 修复 sqrt, e.g., "sqrt3" -> "\sqrt{3}"
+        r'sqrt\s*(\d+|[a-zA-Z])': r'\\sqrt{\1}',
+        # 修复 frac, e.g., "frac12" -> "\frac{1}{2}", "fracab" -> "\frac{a}{b}"
+        r'frac\s*(\d+|[a-zA-Z])\s*(\d+|[a-zA-Z])': r'\\frac{\1}{\2}',
+        # 修复上下标, e.g., "x^2", "x_1" -> "$x^2$", "$x_1$" (先不加$, 后续处理)
+        # 这里只做规范化
+        r'([a-zA-Z\)])\s*\^\s*(\d+|[a-zA-Z])': r'\1^{\2}',
+        r'([a-zA-Z\)])\s*_\s*(\d+|[a-zA-Z])': r'\1_{\2}',
+        # 修复常见的函数名, e.g., "sin x" -> "\sin x"
+        r'\b(sin|cos|tan|log|ln)\b': r'\\\1',
+        # 修复向量表示, e.g., "vec a" -> "\vec{a}"
+        r'\bvec\s*([a-zA-Z])': r'\\vec{\1}',
+    }
+
+    for pattern, replacement in replacements_pattern.items():
+        cleaned_text = re.sub(pattern, replacement, cleaned_text)
+        
+    # --- 阶段3: 上下文感知修复 ---
+    # e.g., 修复被空格隔开的 "x ^ 2"
+    # 这个比较复杂，可以通过分词后检查，或者更复杂的正则
+    
+    # --- 阶段4: 最终清理 ---
+    # 移除公式和文本之间的多余空格
+    cleaned_text = re.sub(r'\s{2,}', ' ', cleaned_text).strip()
+    
+    return cleaned_text
+# ==============================================================================
+# 完整 main.py - 第二部分: FastAPI应用配置
+# ==============================================================================
 
 # --- 2. FastAPI应用配置 ---
-GENERATED_IMAGES_DIR = "generated_images"
-os.makedirs(GENERATED_IMAGES_DIR, exist_ok=True)
-app.mount("/static", StaticFiles(directory=GENERATED_IMAGES_DIR), name="static")
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -267,44 +202,154 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": "AI解题后端服务正在运行 (V10.0 最终架构版)"}
+    return {"message": "AI解题后端服务正在运行 (V12.0 终极教师版)"}
 # ==============================================================================
-# 完整 main.py - 第二部分: 核心API接口
+# 完整 main.py - 第三部分: 核心API接口
 # ==============================================================================
-
 @app.post("/solve")
 async def solve_from_image(file: UploadFile = File(...)):
-    # 【核心修复】: 在处理请求的开始，调用初始化函数
     try:
         initialize_pix2text()
     except Exception as e:
-        print(f"!!! Pix2Text 初始化失败: {e}")
         raise HTTPException(status_code=500, detail=f"核心OCR服务初始化失败: {e}")
 
     if not p2t or not kimi_client or not dashscope.api_key:
         raise HTTPException(status_code=500, detail="核心AI服务未就绪")
 
-    temp_image_path = f"/tmp/temp_{uuid.uuid4()}.png" # 使用/tmp目录
+    temp_image_path = f"/tmp/temp_{uuid.uuid4()}.png"
     try:
         image_bytes = await file.read()
-        
-        # --- A路 & B路: 提取题目信息 ---
-        print("\n--- [A&B路] 提取题目信息... ---")
-        question_text = p2t.recognize(Image.open(io.BytesIO(image_bytes)), return_text=True)
-        
+        print("\n--- [预处理] 正在进行图像修复与增强... ---")
+        # 步骤1: 调用【新】的图片预处理函数
+        preprocessed_image = image_preprocess_v2(image_bytes)
+
+        # --- A路: OCR识别 (【核心修复】: 增加万能适配器) ---
+        print("\n--- [A路] 开始Pix2Text OCR识别 ---")
+        # 我们继续使用 return_text=True，因为它在大多数情况下是有效的
+        ocr_result = p2t(preprocessed_image, return_text=True)
+
+        raw_ocr_text = ""
+        # --- 万能适配器逻辑 ---
+        if isinstance(ocr_result, str):
+            # 情况1: Pix2Text按预期返回了字符串
+            print("--- [A路] Pix2Text返回了字符串(正常)。")
+            raw_ocr_text = ocr_result
+        elif hasattr(ocr_result, '__iter__'): 
+            # 情况2: Pix2Text返回了一个可迭代对象 (比如列表或Page对象)
+            print(f"--- [A路] Pix2Text返回了非字符串对象: {type(ocr_result)}，正在提取文本...")
+            # Page对象可以像列表一样迭代，每个元素是一个包含'text'的字典
+            try:
+                # Page对象的标准提取方式
+                text_parts = [item['text'] for item in ocr_result if 'text' in item]
+                raw_ocr_text = "\n".join(text_parts)
+            except Exception as extract_error:
+                print(f"!!! 从{type(ocr_result)}对象中提取文本失败: {extract_error}")
+                # 最后的备用方案：尝试将其转换为字符串
+                raw_ocr_text = str(ocr_result)
+        else:
+            # 情况3: 返回了其他未知类型，做最后的转换尝试
+            print(f"--- [A路] Pix2Text返回了未知类型: {type(ocr_result)}，将尝试强制转换。")
+            raw_ocr_text = str(ocr_result)
+
+        # --- 清洗OCR文本 ---
+        print("\n--- [清洗] 正在修复OCR识别错误... ---")
+        cleaned_ocr_text = ocr_text_clean_v2(raw_ocr_text)
+        print(f"--- 清洗后的OCR文本: {cleaned_ocr_text[:100].strip()}...")
+        # --- B路: 使用【原始】图片进行Vision识别 ---
+        # Vision模型通常在原始彩色图上表现更好
+        print("\n--- [B路] 开始通义千问Vision图形理解 ---")
         with open(temp_image_path, "wb") as f:
             f.write(image_bytes)
         
-        vision_prompt = "请用简洁的语言描述这张图片中的几何图形信息（顶点、关系、已知条件等），忽略所有文字。"
+        vision_prompt = """
+        **最高指令**: 你是一个极其精密和严谨的多模态图像分析引擎。你的唯一任务是彻底解析下方图片中的所有非文本视觉信息，并将其转化为结构化的、对解题至关重要的文字描述。
+
+        **核心原则**:
+        1.  **绝对专注**: 彻底忽略图片中所有的题目文本、问题描述、选项文字。你的眼中只有图形、图表、符号和数据本身。
+        2.  **结构化输出**: 使用清晰的Markdown标题和列表来组织你的分析结果。
+        3.  **智能适配**: 根据图片内容，自动选择并深度遵循下方最匹配的分析框架。
+
+        ---
+        **【分析框架库】**
+
+        **1. 如果是【平面或立体几何图形】:**
+            *   **图形识别**:
+                *   **类型**: 明确指出是平面几何还是立体几何。识别所有基础图形（如：三角形、四边形、圆形、扇形）和组合图形（如：由...和...组成的图形），以及立体几何体（如：棱柱、棱锥、圆柱、球体）。
+                *   **特殊性质**: 识别并强调图形的特殊性质（如：等腰直角三角形、正六边形、正四面体、圆锥内切于圆柱）。
+            *   **元素与标注**:
+                *   **点**: 列出所有顶点、中点、垂足、切点、交点、重心、内心等，并注明其标签（如: A, B, C, O, M, H）。
+                *   **线**: 识别所有线段、射线、直线、辅助线（特别是虚线），并描述其特征（如：中位线、角平分线、高线、切线）。
+                *   **面**: 对于立体几何，识别并命名所有重要的平面（如：平面 ABCD, 侧面 A_1ABB_1）。
+            *   **关系与条件**:
+                *   **位置关系**: 精确描述线与线（平行、垂直、相交、异面）、线与面（平行、垂直、在平面内）、面与面（平行、垂直）的关系。
+                *   **角度关系**: 提取所有明确标注的角度值（如：∠ABC = 90°），并指出隐含的角度关系（如：对顶角相等、同位角相等）。
+                *   **长度/数值关系**: 提取所有标注的长度、面积、体积等数值，并指出隐含的相等关系（如：AB = AC，由等腰三角形符号可知）。
+
+        **2. 如果是【函数图像或数据图表】 (折线图, 柱状图, 散点图, 饼图等):**
+            *   **图表识别**:
+                *   **类型**: 明确图表类型。
+                *   **标题与单位**: 识别图表的主标题，以及X轴和Y轴分别代表的物理量或统计量及其单位（如：X轴-时间(s), Y轴-速度(m/s)）。
+            *   **数据点与特征**:
+                *   **特殊点**: 精确提取并描述所有关键点的坐标，包括但不限于：与坐标轴的交点（截距）、顶点、极值点（极大/极小）、拐点、奇点、函数的周期。
+                *   **交点**: 如果有多条曲线，描述它们之间的交点坐标。
+                *   **数据值**: 对于柱状图/饼图，精确读出每个类别对应的数值或百分比。
+            *   **趋势与行为**:
+                *   **单调性**: 描述函数在不同区间的增减性。
+                *   **凹凸性/曲率**: 描述函数的凹凸性变化。
+                *   **相关性**: 对于散点图，描述变量之间可能存在的正相关、负相关或不相关。
+                *   **比较**: 对于多组数据，进行横向或纵向的比较分析（如：A组的增长率高于B组）。
+
+        **3. 如果是【物理模型图】 (力学, 电磁学, 光学, 热学等):**
+            *   **场景识别**: 识别物理场景（如：天体运动、单摆、碰撞、斜面滑块、带电粒子在磁场中运动、光的折射/反射、热力学循环）。
+            *   **物体与状态**:
+                *   **物体**: 列出所有研究对象（如：物体A, 小球m, 活塞, 光滑/粗糙表面）。
+                *   **初始状态**: 描述系统在t=0时刻的状态（如：静止、初速度v_0、开关S断开）。
+                *   **过程**: 描述将要发生或正在发生的物理过程（如：自由落体、匀速圆周运动、弹性碰撞）。
+            *   **受力/场线分析**:
+                *   **力**: 如果有受力分析图，列出所有画出的力（如：重力G, 支持力N, 摩擦力f, 拉力T）。
+                *   **场**: 描述电场线或磁感线的方向、疏密分布。
+            *   **元器件与连接 (电学)**:
+                *   **元件**: 识别电源（直流/交流）、电阻、电容、电感、电压表、电流表、滑动变阻器等，并注明其标签（R1, L2）。
+                *   **连接**: 精确描述是串联还是并联。
+
+        **4. 如果是【化学模型图】 (实验装置, 分子结构, 反应坐标图):**
+            *   **仪器与装置**:
+                *   **识别**: 列出所有实验仪器（如：烧杯, 锥形瓶, 分液漏斗, 冷凝管, 气密性检查装置）。
+                *   **连接**: 描述仪器的连接顺序和物质的流向。
+                *   **条件**: 识别反应所需的条件（如：加热（△）, 催化剂, 高温高压）。
+            *   **物质与反应**:
+                *   **物质**: 识别关键的反应物、生成物、催化剂，并注明其化学式和状态（(s), (l), (g), (aq)）。
+                *   **微观结构**: 对于分子/晶体结构图，描述其化学键类型（单键/双键）、空间构型（平面/四面体）、官能团。
+            *   **能量/速率图**: 对于反应坐标图，提取活化能、反应热（焓变ΔH）的数值和正负。
+
+        **5. 如果是【地理/地质图】 (地图, 等高线, 地质剖面, 大气环流等):**
+            *   **图表类型**: 识别图表类型（如：等高线地形图、洋流模式图、气候类型分布图、地质剖面图、天气系统图）。
+            *   **核心要素与图例**:
+                *   **要素**: 提取所有关键地理要素（如：山脉, 山脊, 山谷, 河流, 湖泊, 海岸线, 经纬线, 城市, 比例尺, 指向标）。
+                *   **图例解读**: 详细解释图例中所有符号、颜色、线条的含义。
+            *   **空间分析**:
+                *   **数值读取**: 读出等高线/等温线/等压线的数值，并判断高低趋势。
+                *   **位置关系**: 描述地理要素的精确或相对位置（如：A城位于B山的东南方向）。
+                *   **分布规律**: 总结图中地理现象的分布特征（如：降水由东南沿海向西北内陆递减）。
+
+        **6. 如果是【生物模型图】 (细胞结构, 生态系统, 遗传图谱, 生理过程):**
+            *   **结构与标注**:
+                *   **宏观/微观**: 判断是宏观层面（生态系统、食物网）还是微观层面（细胞、分子）。
+                *   **识别**: 列出所有被标注的生物结构（如：细胞核, 叶绿体, 神经元, 基因A/a）及其名称。
+            *   **过程与关系**:
+                *   **流程**: 描述图中展示的生命活动过程（如：光合作用、呼吸作用、神经冲动传导、蛋白质合成、基因遗传）。
+                *   **关系**: 描述生物体之间或结构之间的关系（如：捕食关系、物质循环、能量流动、信息传递）。
+                *   **遗传分析**: 对于遗传图谱，识别显性/隐性关系、判断遗传病类型（常染色体/性染色体遗传）。
+
+        ---
+        **最终指令**: 如果图片内容不属于以上任何一种，或者极其模糊无法辨认，请回答“图中未包含可供分析的有效视觉信息”。否则，请严格按照最匹配的框架进行详细分析。
+        """
         messages = [{'role': 'user', 'content': [{'text': vision_prompt}, {'image': f'file://{os.path.abspath(temp_image_path)}'}]}]
         vision_response = dashscope.MultiModalConversation.call(model='qwen-vl-max', messages=messages)
         
-        if vision_response.status_code != 200:
-            geometry_description = "视觉模型分析失败。"
-            print(f"!!! 通义千问API调用失败: {vision_response.message}")
-        else:
+        geometry_description = ""
+        if vision_response.status_code == 200:
             raw_content_list = vision_response.output.choices[0].message.content
-            geometry_description = ""
             if isinstance(raw_content_list, list):
                 for part in raw_content_list:
                     if part.get("text"):
@@ -313,125 +358,90 @@ async def solve_from_image(file: UploadFile = File(...)):
             elif isinstance(raw_content_list, str):
                 geometry_description = raw_content_list
 
-        print(f"--- 识别到的文本: {question_text[:100].strip()}...")
         print(f"--- 识别到的图形信息: {geometry_description[:100].strip()}...")
 
-        # --- 步骤 1: 【终极版】AI规划师Prompt ---
-        planner_prompt = f"""
-        **角色**: 你是一个顶级的Python程序员和数学专家，任务是为下面的数学题编写一个**单一、完整、自给自足**的Python脚本来解决它。
-        
-        **脚本核心要求**:
-        1.  **展示过程 (Show Your Work)**: 在进行任何求解或化简之前，**必须**先用 `print()` 和 `sp.pretty()` 打印出你将要操作的**原始符号方程式**。
-        2.  **清晰输出**: **必须** 通过 `print()` 语句，分步输出所有关键的中间计算结果和最终答案。每个print输出前，请用一个简短的描述性文字说明。
-        3.  **精确计算**: 使用 `sympy` 库进行所有代数运算。
-        4.  **代码块**: 整个脚本必须被包裹在 ````python ... ``` ` 中。
+        # --- C路: 【终极教师版Prompt】 ---
+        print("\n--- [C路] 开始信息融合并调用Kimi ---")
+        final_prompt = f"""
+    <INSTRUCTIONS>
+        **你的角色**: 你是一位顶级的在线全学科家教，你的核心任务是**回答问题**，而不是描述图片，或者只给解析不给最终答案。
 
-        **【一个完美的脚本示例】**:
-        ```python
-        import sympy as sp
-        x = sp.Symbol('x')
-        # 首先，打印出要解的方程
-        print("需要求解的方程是:")
-        equation = sp.Eq(x**2 - 4, 0)
-        print(sp.pretty(equation))
-        # 然后，求解并打印结果
-        solutions = sp.solve(equation, x)
-        print("方程的解是:")
-        print(solutions)
-        ```
-
-        **题目信息**:
-        [OCR文本]: {question_text}
-        [图形描述]: {geometry_description}
-
-        请开始编写一个能够展示完整思考过程的Python脚本。
-        """
-        
-        print("\n--- [步骤 1] 正在请求AI生成解题脚本... ---")
-        script_response = kimi_client.chat.completions.create(model="moonshot-v1-32k", messages=[{"role": "user", "content": planner_prompt}], temperature=0.0)
-        script_markdown = script_response.choices[0].message.content
-
-        # --- 步骤 2: 后端执行脚本并捕获结果 ---
-        print("\n--- [步骤 2] 正在执行AI脚本并捕获结果... ---")
-        pattern = re.compile(r"```python\n(.*?)\n```", re.DOTALL)
-        match = pattern.search(script_markdown)
-        if not match:
-            print("--- [步骤 2] AI未生成代码，将其回答作为最终讲解。")
-            return {"solution": script_markdown}
-
-        code_to_execute = match.group(1)
-        
-        image_url = None
-        if 'plt.savefig' in code_to_execute:
-            image_filename = f"{uuid.uuid4()}.png"
-            image_path = os.path.join(GENERATED_IMAGES_DIR, image_filename)
-            code_to_execute = code_to_execute.replace("savefig('image.png')", f"savefig('{image_path}')")
-            image_url = f"/static/{image_filename}"
-        
-        # 捕获脚本的所有print输出
-        stdout_capture = io.StringIO()
-        try:
-            with contextlib.redirect_stdout(stdout_capture):
-                # 为sympy的pretty print准备环境，并提供所有需要的库
-                execution_scope = {
-                    "sp": sp,
-                    "np": np,
-                    "plt": plt,
-                    "__builtins__": None,
-                }
-                exec("import sympy as sp; import numpy as np; import matplotlib.pyplot as plt", execution_scope)
-                # 执行AI生成的代码
-                exec(code_to_execute, execution_scope)
-            
-            if image_url:
-                print(f"--- 图片生成成功: {image_url} ---")
-
-        except Exception as e:
-            print(f"!!! AI脚本执行失败: {e}")
-            stdout_capture.write(f"\n在执行解题代码时发生了错误: {e}")
-
-        calculation_results = stdout_capture.getvalue()
-        print(f"--- 捕获的计算结果 ---\n{calculation_results}")
-
-        # --- 步骤 3: 【终极版】AI讲解员Prompt ---
-        teacher_prompt = f"""
-        **背景情景**: 你是一位和蔼可亲、经验丰富的数学老师。
-        **核心任务**: 这里有一份由计算机程序生成的、**包含详细中间步骤**的计算日志。请你**只使用**这些材料，为学生写一篇流畅、自然、循序渐进的讲解。
-
-        **【不可违背的黄金法则】**:
-        1.  **忠于过程**: 你必须将“计算结果日志”中提供的**所有中间方程式和推导步骤**，自然地融入到你的讲解中，向学生展示问题是如何一步步被解决的。
-        2.  **严禁自己计算**: 你的所有结论都必须基于日志内容。
-        3.  **严禁出现代码**: 你的回答中 **绝对不能** 出现任何Python代码。
-        4.  **扮演好老师**: 解释每一步的“为什么”，而不仅仅是“是什么”。
-
-        **【可使用的材料】**
-
-        [原始题目]:
-        {question_text}
-
-        [计算机生成的、包含过程的计算结果日志]:
-        ```
-        {calculation_results}
-        ```
+        **你的核心任务**:
+        仔细阅读下方 `<QUESTION>` 标签中提供的、从图片中识别出的**【学生的问题】**。然后，利用 `<CONTEXT>` 标签中提供的**【辅助性视觉信息】**作为参考，首先判断题目所属的【学科领域】，然后调用你对应领域的专家知识，生成一份详尽、完整、富有启发性且绝对正确的解题步骤。你的目标是不仅让学生知道答案，也要让他理解背后的原理。
         ---
-        好了，老师，请用上面的详细材料，为学生带来一堂完美的解题课吧！
-        """
+        **【第一步：学科判断与思维模式切换】**
+        请在开始解答前，先在内心判断题目属于哪个学科（语文、历史、政治、英语、数学、物理、化学、生物、地理），然后采用该学科最专业的分析框架和术语进行解答。
+
+        ---
+        **【第二步：不可违背的教学风格与内容黄金法则】**:
+        1.  **聚焦问题**: 你的回答**必须**围绕 `<QUESTION>` 中的问题展开。`<CONTEXT>` 里的视觉信息只是帮助你理解题目的工具，**绝对不能**复述或详细描述视觉信息本身，除非题目明确要求。
+
+        2.  **扮演老师，而非AI**:
+            *   **语气**: 必须使用循循善诱、富有亲和力的口吻。多使用“好的，同学，我们一起来分析一下”、“首先，我们要注意到题目的关键点是...”、“接下来，顺着这个思路...”、“你看，顺着这个思路，结论是不是就清晰了？”等引导性、对话式的语言。
+            *   **避免AI习语**: 绝对禁止使用“首先，... 其次，... 最后，...”、“综上所述”、“总而言之”等刻板的AI常用语。讲解应该是自然流畅的。
+            *   **自信与清晰**: 你是老师，请直接、清晰地展示你的推导过程。绝对不要出现“我算错了”、“这里可能存在误解”等自我怀疑的言论。
+
+        3.  **必须解答到底**:
+            *   **完整性**:  **必须**将 `<QUESTION>` 中的每一个子问题都解答到最终的结论。**绝对禁止**只给思路或分析，而不给出最终答案，也不要光回答一部分就结束。
+            *   **禁止省略**: 绝对不能以任何理由省略任何关键的推导、计算、论证或史实引用。学生需要看到完整的答案是如何得出的。
+            *   你 **必须** 将题目解答到最终的数值答案或明确的证明结论。
+            *   **绝对禁止** 以“过程复杂”、“计算繁琐”、“信息不足”或任何其他理由，只提供解题思路而不给出具体计算过程和最终结果。
+            *   如果题目真的条件不足，你必须明确指出缺失哪个条件，并尝试用符号表示最终答案。
+
+        4.  **必须展示过程**:
+            *   **禁止跳步**: 必须展示每一个关键的推导、化简和计算步骤。绝对不能以“过程复杂”、“计算繁琐”、“证明略”等任何理由，省略任何关键的推导和计算步骤。学生需要看到完整的“心路历程”。
+            *   **思路先行**: 在进行关键计算或复杂分析前，先用一两句话点明这一步的“核心思路”或“将要使用的关键公式”或“分析角度”，做到“授人以渔”（例如，对于历史题，可以是“我们先从经济背景入手分析...”；对于数学题，可以是“这里我们要用到的是正弦定理...”）。
+
+        5.  **针对不同学科的解答侧重点**:
+        *   **对于【数理化生】**: 重点在于**逻辑的严谨性**和**步骤的完整性**。每一步计算和推导都必须清晰无误。
+        *   **对于【文史哲政地】**: 重点在于**论证的充分性**和**知识的广度与深度**。需要旁征博引，结合相关的背景知识、理论框架或史实材料进行多角度分析。
+        *   **对于【英语】**: 重点在于**语法的准确性**和**语言的地道性**。如果是翻译或作文，需要给出高质量的译文或范文；如果是语法题，需要详细解释语法规则。
+        *   **对于【语文】**: 重点在于**文本的细读**和**思想的深度**。分析诗歌或阅读理解时，要结合上下文，挖掘深层含义和艺术手法。
         
-        print("\n--- [步骤 3] 正在请求AI生成最终讲解... ---")
-        final_solution_response = kimi_client.chat.completions.create(model="moonshot-v1-32k", messages=[
-            {"role": "system", "content": "你是一位顶级的数学家教，擅长将复杂的计算过程，转述为学生能听懂的、富有亲和力的讲解。"},
-            {"role": "user", "content": teacher_prompt}
-        ], temperature=0.5, max_tokens=8192)
-        final_solution_markdown = final_solution_response.choices[0].message.content
+        **【第三步：不可违背的输出格式黄金法则】**:
 
-        return {"solution": final_solution_markdown}
+        1.  **纯文本与LaTeX**: 你的回答只能包含标准的Markdown文本和LaTeX数学公式。**绝对不能**包含任何Python代码或其他代码。
+        2.  **LaTeX标准**:
+            *   **行内公式**: 必须严格使用 `$...$` 包裹，例如：`$a^2 + b^2 = c^2$`。
+            *   **块级公式 (独占一行)**: 必须严格使用 `$$...$$` 包裹。
+            *   **标准命令**: 确保使用标准的LaTeX命令，如 `\frac`, `\sqrt`, `\sin`, `\cdot` 等。
+            *   所有数学、物理公式和化学方程式，都必须严格使用标准的LaTeX语法。关键步骤用加粗提示。
+        **重要**: 你的输出 **绝对不能** 包含 `<INSTRUCTIONS>`, `<DATA>`, `<QUESTION>`, `<CONTEXT>` 这些标签本身。直接开始你的教学讲解。
+</INSTRUCTIONS>
+    <DATA>
+        ---
+        **【辅导材料】**
+        <QUESTION>
+        [学生遇到的题目 - 文字与公式]:
+        {cleaned_ocr_text}
+        </QUESTION>
+        
+        <CONTEXT>
+        [学生遇到的题目 - 图形信息]:
+        {geometry_description}
+        </CONTEXT>
+    </DATA>
+        ---
 
+        好了，全能的认真负责的正确的老师，请开始你最详尽、最负责任的讲解，确保学生能看到每一个步骤和最终的答案。
+        """
+        system_prompt = """你是一位遵循指令的顶级的、极其负责任的高中全学科老师。你的任务是解析<INSTRUCTIONS>，处理<DATA>，然后生成最终的教学回答。"""
+        solution_response = kimi_client.chat.completions.create(
+            model="moonshot-v1-32k",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": final_prompt}
+            ],
+            temperature=0.2,# 降低温度，让逻辑更严谨
+            max_tokens=22000
+        )
+        final_markdown = solution_response.choices[0].message.content
+        return PlainTextResponse(content=final_markdown, media_type="text/markdown; charset=utf-8")
     except Exception as e:
         print(f"!!! 发生严重错误 !!!")
         print(f"错误类型: {type(e).__name__}")
         print(f"错误详情: {e}")
         raise HTTPException(status_code=500, detail=f"处理时发生错误: {str(e)}")
     finally:
-        # 无论成功或失败，都确保临时文件被删除
         if os.path.exists(temp_image_path):
             os.remove(temp_image_path)

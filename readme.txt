@@ -2,7 +2,7 @@
 1.  **快速启动指南**：给已经配置好环境的你，明天回来如何快速恢复工作。
 2.  **环境重置指南**：介绍如何安全地“格式化”环境并重新开始。
 3.  **全新部署指南**：给一个拿到代码的全新同学，如何从零开始把项目跑起来。
-
+4.安装新的包和更新requirements.txt
 ---
 
 ### **AI拍照解题项目 - 运行与部署说明文档**
@@ -171,3 +171,28 @@
 
 ---
 这份文档应该足够详尽了，无论是你自己继续开发，还是交接给其他同学，都能提供清晰的指引。祝你今天下班愉快！```
+
+四。
+**1. 启动后端服务:**
+
+   a. **打开终端** (推荐使用VS Code的集成终端)。
+
+   b. **导航到后端目录**:
+      ```bash
+      cd path/to/your/project/ai-solver-mvp/backend
+      cd "C:\Users\hxm\有用的东西\ai-solver-mvp\backend"
+      ```
+
+   c. **激活Python虚拟环境**:
+      ```bash
+      # Windows
+      .\venv\Scripts\activate
+      # macOS / Linux
+      source venv/bin/activate
+      ```
+      *(确保命令行提示符前出现 `(venv)`)*
+d. 安装或者卸载某些包
+pip install opencv-python-headless    pip uninstall some-old-package
+在前端安装，就在你的前端终端（frontend/vite-project目录下）运行，例如npm install marked
+npm install @types/marked --save-dev # 安装类型定义
+e.更新清单pip freeze > requirements.txt
