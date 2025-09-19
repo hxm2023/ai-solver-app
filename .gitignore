@@ -1,0 +1,14 @@
+# Python
+backend/venv/
+backend/__pycache__/
+backend/generated_images/
+backend/temp_*.png
+
+
+# Node.js
+frontend/vite-project/node_modules/
+frontend/vite-project/dist/
+frontend/vite-project/.env*
+frontend/vite-project/npm-debug.log*
+frontend/vite-project/yarn-debug.log*
+frontend/vite-project/yarn-error.log*
