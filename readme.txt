@@ -27,7 +27,7 @@
    b. **导航到后端目录**:
       ```bash
       cd path/to/your/project/ai-solver-mvp/backend
-      cd "C:\Users\hxm\有用的东西\ai-solver-mvp\backend"
+      例如cd "C:\Users\hxm\有用的东西\ai-solver-mvp\backend"
       ```
 
    c. **激活Python虚拟环境**:
@@ -52,7 +52,7 @@
    b. **导航到前端目录**:
       ```bash
       cd path/to/your/project/ai-solver-mvp/frontend/vite-project
-      cd "C:\Users\hxm\有用的东西\ai-solver-mvp\frontend\vite-project"
+      例如cd "C:\Users\hxm\有用的东西\ai-solver-mvp\frontend\vite-project"
       ```
 
    c. **启动Vite开发服务器**:
@@ -171,6 +171,7 @@
 
 ---
 这份文档应该足够详尽了，无论是你自己继续开发，还是交接给其他同学，都能提供清晰的指引。祝你今天下班愉快！```
+<<<<<<< HEAD
 
 四。
 **1. 启动后端服务:**
@@ -196,3 +197,5 @@ pip install opencv-python-headless    pip uninstall some-old-package
 在前端安装，就在你的前端终端（frontend/vite-project目录下）运行，例如npm install marked
 npm install @types/marked --save-dev # 安装类型定义
 e.更新清单pip freeze > requirements.txt
+=======
+>>>>>>> dde465c82517162418fff510524005c434406521
