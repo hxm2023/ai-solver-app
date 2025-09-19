@@ -206,3 +206,137 @@ body {
   border-radius: 8px; 
   border: 1px solid var(--border-color); 
 }
+/* 新增的返回按钮样式 */
+.back-button {
+  position: absolute;
+  top: 1.5rem;
+  left: 1.5rem;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 1px solid white;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.back-button:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 上传界面的缩略图样式 */
+.thumbnail {
+  max-width: 200px;
+  max-height: 150px;
+  border-radius: 8px;
+  margin-top: 1rem;
+  border: 1px solid var(--border-color);
+}
+/* ==============================================================================
+ * App.css - 为V15.1可选裁剪UI版追加的样式
+ * ============================================================================== */
+
+/* 上传界面的Grid布局 */
+.upload-grid {
+  display: grid;
+  grid-template-columns: 1fr; /* 默认为一列 */
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+/* 在批改模式下，如果有两项，则变为两列 */
+.upload-grid:has(.upload-section + .upload-section) {
+  grid-template-columns: 1fr 1fr;
+}
+
+.upload-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.upload-section h3 {
+  margin-top: 0;
+  color: var(--subtle-text-color);
+  font-weight: 500;
+}
+
+/* 新的上传框样式 */
+.upload-box {
+  width: 100%;
+  height: 150px;
+  border: 2px dashed var(--border-color);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--subtle-text-color);
+}
+.upload-box:hover {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  background-color: #f8f9ff;
+}
+.upload-box span {
+  font-size: 3rem;
+  font-weight: 200;
+  line-height: 1;
+}
+.upload-box p {
+  margin: 0.5rem 0 0 0;
+  font-weight: 500;
+}
+
+
+/* 缩略图容器 */
+.thumbnail-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.thumbnail {
+  width: 100%;
+  max-width: 250px;
+  height: auto;
+  max-height: 200px;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+/* 裁剪按钮 */
+.crop-button {
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background-color: #f8f9fa;
+  color: var(--text-color);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.crop-button:hover {
+  background-color: #e9ecef;
+  border-color: #ced4da;
+}
+
+/* 裁剪界面的提示文字 */
+.crop-instruction {
+  font-size: 1rem;
+  color: var(--subtle-text-color);
+  margin-bottom: 1rem;
+}
+
+/* 总提交按钮容器 */
+.main-action-button-container {
+  margin-top: 1rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+}

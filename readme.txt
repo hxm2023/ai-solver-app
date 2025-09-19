@@ -199,3 +199,6 @@ npm install @types/marked --save-dev # 安装类型定义
 e.更新清单pip freeze > requirements.txt
 =======
 >>>>>>> dde465c82517162418fff510524005c434406521
+
+
+tip: ai写代码提示词：好的，那请你提供一下修改后的完整App.tsx代码吧，非常完整毫无省略，直接粘贴一键运行，之前的代码块也没有被阉割。如果代码太长可以分段给出

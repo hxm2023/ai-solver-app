@@ -1,0 +1,72 @@
+.mode-selector-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 80vh;
+  padding: 2rem;
+}
+
+.mode-selector-card {
+  background-color: var(--card-background);
+  padding: 2.5rem;
+  border-radius: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  max-width: 600px;
+}
+
+.mode-selector-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-color);
+  margin-bottom: 0.5rem;
+}
+
+.mode-selector-subtitle {
+  font-size: 1.1rem;
+  color: var(--subtle-text-color);
+  margin-bottom: 2.5rem;
+}
+
+.mode-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.mode-button {
+  display: flex;
+  align-items: center;
+  padding: 1.5rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background-color: #f9fafb;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s ease-in-out;
+  width: 100%;
+  box-sizing: border-box; /* 确保padding不会撑大宽度 */
+}
+
+.mode-button:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  border-color: var(--primary-color);
+}
+
+.button-icon {
+  font-size: 2rem;
+  margin-right: 1.5rem;
+}
+
+.button-text {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.button-description {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--subtle-text-color);
+}

@@ -199,6 +199,24 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# --- 【新增】可复用的OCR处理函数 ---
+def process_ocr(image: Image.Image) -> str:
+    """封装了OCR识别、类型适配和文本清洗的完整流程"""
+    ocr_result = p2t(image, return_text=True)
+    
+    raw_ocr_text = ""
+    if isinstance(ocr_result, str):
+        raw_ocr_text = ocr_result
+    elif hasattr(ocr_result, '__iter__'):
+        try:
+            text_parts = [item['text'] for item in ocr_result if 'text' in item]
+            raw_ocr_text = "\n".join(text_parts)
+        except Exception:
+            raw_ocr_text = str(ocr_result)
+    else:
+        raw_ocr_text = str(ocr_result)
+        
+    return ocr_text_clean_v2(raw_ocr_text)
 
 @app.get("/")
 def read_root():
@@ -445,3 +463,150 @@ async def solve_from_image(file: UploadFile = File(...)):
     finally:
         if os.path.exists(temp_image_path):
             os.remove(temp_image_path)
+            
+# ==============================================================================
+# 完整 main.py - 新增: 批改作业API接口
+# ==============================================================================
+@app.post("/review")
+async def review_from_images(
+    question_image: UploadFile = File(...),
+    answer_image: UploadFile = File(...)
+):
+    try:
+        initialize_pix2text()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"核心OCR服务初始化失败: {e}")
+
+    if not p2t or not kimi_client or not dashscope.api_key:
+        raise HTTPException(status_code=500, detail="核心AI服务未就绪")
+    
+    # 为通义千问API创建临时文件
+    temp_q_image_path = f"/tmp/temp_q_{uuid.uuid4()}.png"
+    temp_a_image_path = f"/tmp/temp_a_{uuid.uuid4()}.png"
+
+    try:
+        # --- 1. 读取两张图片的字节流 ---
+        # --- 1. 处理题目图片 ---
+        print("\n--- 正在处理【题目】图片... ---")
+        q_image_bytes = await question_image.read()
+        q_preprocessed = image_preprocess_v2(q_image_bytes)
+        question_ocr_text = process_ocr(q_preprocessed) # <<< 调用新函数
+        
+        # ... (通义千问获取 question_visual_info 的逻辑不变) ...
+
+        
+        
+        with open(temp_q_image_path, "wb") as f:
+            f.write(q_image_bytes)
+        
+        vision_prompt = "请用简洁的语言描述这张图片中的几何图形信息（顶点、关系、已知条件等），忽略所有文字。"
+        q_messages = [{'role': 'user', 'content': [{'text': vision_prompt}, {'image': f'file://{os.path.abspath(temp_q_image_path)}'}]}]
+        q_vision_response = dashscope.MultiModalConversation.call(model='qwen-vl-max', messages=q_messages)
+        
+        question_visual_info = ""
+        if q_vision_response.status_code == 200:
+            raw_content_list = q_vision_response.output.choices[0].message.content
+            if isinstance(raw_content_list, list):
+                for part in raw_content_list:
+                    if part.get("text"):
+                        question_visual_info = part["text"]
+                        break
+            elif isinstance(raw_content_list, str):
+                question_visual_info = raw_content_list
+        
+        print(f"--- 题目OCR文本: {question_ocr_text[:80].strip()}...")
+        print(f"--- 题目视觉信息: {question_visual_info[:80].strip()}...")
+
+        # --- 3. 对【答案图片】进行双路信息提取 ---
+        print("\n--- 正在处理【答案】图片... ---")
+
+        a_image_bytes = await answer_image.read()
+        a_preprocessed = image_preprocess_v2(a_image_bytes)
+        answer_ocr_text = process_ocr(a_preprocessed) # <<< 再次调用新函数
+
+
+        with open(temp_a_image_path, "wb") as f:
+            f.write(a_image_bytes)
+            
+        a_messages = [{'role': 'user', 'content': [{'text': vision_prompt}, {'image': f'file://{os.path.abspath(temp_a_image_path)}'}]}]
+        a_vision_response = dashscope.MultiModalConversation.call(model='qwen-vl-max', messages=a_messages)
+        
+        answer_visual_info = ""
+        if a_vision_response.status_code == 200:
+            raw_content_list = a_vision_response.output.choices[0].message.content
+            if isinstance(raw_content_list, list):
+                for part in raw_content_list:
+                    if part.get("text"):
+                        answer_visual_info = part["text"]
+                        break
+            elif isinstance(raw_content_list, str):
+                answer_visual_info = raw_content_list
+        
+        print(f"--- 学生答案OCR文本: {answer_ocr_text[:80].strip()}...")
+        print(f"--- 学生答案视觉信息: {answer_visual_info[:80].strip()}...")
+
+        # --- 4. 构造【批改模式】的终极Prompt ---
+        print("\n--- 正在构造批改Prompt... ---")
+        review_prompt = f"""
+        **角色**: 你是一位极其专业、富有经验且鼓励性的批改老师。你的任务是仔细比对“标准题目”和“学生答案”，给出一份全面、有建设性的批改报告。
+
+        **核心任务**:
+        1.  **判断对错**: 首先，明确判断学生的最终答案是否正确。
+        2.  **分析过程**: 逐一分析学生答案中的解题步骤。
+
+        **【批改报告黄金法则】**:
+
+        1.  **如果答案正确**:
+            *   **明确表扬**: 首先要用积极、鼓励的语言肯定学生的成果，例如：“非常棒！你的答案是完全正确的，解题思路也很清晰！”
+            *   **点出亮点**: 指出学生做得好的地方，例如：“特别欣赏你在这里使用了配方法，非常巧妙。”
+            *   **提供优化建议**: 在肯定的基础上，提出可以优化的地方，例如：“如果这里能多一步关于定义域的讨论，那就更完美了。”或者“其实还有另一种更简洁的方法，你想了解一下吗？”
+
+        2.  **如果答案错误**:
+            *   **先肯定，后指正**: 不要直接否定。先找到学生做得对的部分并予以肯定，例如：“同学你好，你对正弦定理的理解和应用非常到位，这是一个很好的开始！”
+            *   **精准定位错误**: 明确指出学生**第一个**出错的步骤，并解释**为什么**错了。例如：“问题出在第二步的化简上，这里应该同乘以`2a`而不是`a`，因为...”
+            *   **给出正确示范**: 在指出错误后，给出从错误点开始的、正确的解题步骤和最终答案。
+            *   **鼓励结尾**: 用鼓励的话语结束，例如：“这只是一个小的疏忽，下次注意就好。你已经很接近正确答案了，加油！”
+
+        3.  **格式要求**:
+            *   使用清晰的Markdown格式，可以用“✅ 亮点解析”、“❌ 错误分析”、“💡 优化建议”等标题来组织报告。
+            *   所有数学公式必须使用标准的LaTeX语法。
+
+        ---
+        **【批改材料】**
+
+        <QUESTION_DATA>
+            <OCR_TEXT>{question_ocr_text}</OCR_TEXT>
+            <VISUAL_INFO>{question_visual_info}</VISUAL_INFO>
+        </QUESTION_DATA>
+
+        <STUDENT_ANSWER_DATA>
+            <OCR_TEXT>{answer_ocr_text}</OCR_TEXT>
+            <VISUAL_INFO>{answer_visual_info}</VISUAL_INFO>
+        </STUDENT_ANSWER_DATA>
+        """
+
+        # --- 5. 调用Kimi API并返回结果 ---
+        print("\n--- 正在调用Kimi生成批改报告... ---")
+        system_prompt_review = "你是一位负责批改作业、并提供高质量、鼓励性反馈的辅导老师。"
+        
+        solution_response = kimi_client.chat.completions.create(
+            model="moonshot-v1-32k",
+            messages=[
+                {"role": "system", "content": system_prompt_review},
+                {"role": "user", "content": review_prompt}
+            ],
+            temperature=0.5,
+            max_tokens=8192
+        )
+        final_markdown = solution_response.choices[0].message.content
+        
+        return {"solution": final_markdown}
+
+    except Exception as e:
+        print(f"!!! 发生严重错误 !!!")
+        print(f"错误类型: {type(e).__name__}")
+        print(f"错误详情: {e}")
+        raise HTTPException(status_code=500, detail=f"处理时发生错误: {str(e)}")
+    finally:
+        if os.path.exists(temp_q_image_path): os.remove(temp_q_image_path)
+        if os.path.exists(temp_a_image_path): os.remove(temp_a_image_path)
