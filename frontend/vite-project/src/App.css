@@ -340,3 +340,104 @@ body {
   border-top: 1px solid var(--border-color);
   text-align: center;
 }
+/* --- 新增的解题类型选择器样式 --- */
+.solve-type-selector {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  background-color: var(--background-color);
+  padding: 0.5rem;
+  border-radius: 10px;
+}
+.solve-type-selector button {
+  flex-grow: 1;
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  background-color: transparent;
+  color: var(--subtle-text-color);
+  transition: all 0.2s ease-in-out;
+}
+.solve-type-selector button.active {
+  background-color: var(--card-background);
+  color: var(--primary-color);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+/* --- 新增的指定题目输入框样式 --- */
+.specific-question-input {
+  margin-bottom: 1.5rem;
+}
+.specific-question-input input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+.specific-question-input input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(90, 103, 216, 0.2);
+}
+/* ==============================================================================
+ * App.css - 为V15.2美化UI追加的样式
+ * ============================================================================== */
+
+/* --- 新的、富有科技感的提交按钮 --- */
+.main-action-button-container {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.modern-button {
+  padding: 1rem 2.5rem;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: white;
+  border: none;
+  border-radius: 50px; /* 圆角胶囊形状 */
+  cursor: pointer;
+  
+  /* 核心：漂亮的渐变背景 */
+  background-image: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+  
+  /* 立体感阴影 */
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  
+  transition: all 0.3s ease-in-out;
+}
+
+.modern-button:hover:not(:disabled) {
+  /* 鼠标悬浮时，阴影变大，按钮轻微上浮 */
+  transform: translateY(-3px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+.modern-button:active:not(:disabled) {
+  /* 鼠标点击时，按钮下沉 */
+  transform: translateY(-1px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.modern-button:disabled {
+  background-image: none;
+  background-color: #A0AEC0;
+  cursor: not-allowed;
+  opacity: 0.7;
+  box-shadow: none;
+}
+
+/* --- 微调上传区的标题，使其更清晰 --- */
+.upload-section h3 {
+  font-size: 1.2rem;
+  text-align: center;
+  width: 100%;
+}
