@@ -1,11 +1,13 @@
 # ==============================================================================
-# 完整 main.py - 【V22.0 追问图片记忆修复版 - 混合输入 + 前端续答】
+# 完整 main.py - 【V23.0 单题识别精度增强版】
 # 核心特性：
-# 1. OCR增强（Pix2Text）+ 原图视觉（通义千问）= 混合输入架构
+# 1. OCR增强（Pix2Text + OpenCV高级图像处理）+ 原图视觉（通义千问）= 混合输入架构
 # 2. 删除后端自动续答 - 由前端循环处理续答逻辑
 # 3. 追问图片记忆修复 - 每次追问都重新发送图片，避免AI遗忘或幻觉
 # 4. 完整对话历史 - 追问时重建包含图片的完整消息历史
 # 5. 优化提示词 - 避免暴露技术细节，全中文回答
+# 6. 【V23.0新增】高级图像增强流水线 - 对抗模糊、光照不均、污渍
+# 7. 【V23.0新增】AI智能校正 - 引导模型比对图片修正OCR错误
 # ==============================================================================
 
 import os
@@ -13,7 +15,7 @@ import io
 import re
 import uuid
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
-from fastapi.responses import PlainTextResponse, StreamingResponse
+from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import dashscope
@@ -23,11 +25,14 @@ import base64
 from fastapi.responses import JSONResponse
 from PIL import Image
 import tempfile
-import json
-import asyncio
+import numpy as np
+import cv2
 
 from dashscope import MultiModalConversation
 from pix2text import Pix2Text
+from image_enhancer import advanced_image_processing_pipeline
+# V24.0 新增: 导入题目分割器模块
+from question_splitter import find_question_boxes
 
 
 SESSIONS = {}
@@ -64,7 +69,124 @@ app.add_middleware(
 
 @app.get("/")
 def read_root():
-    return {"message": "AI解题后端服务正在运行 (V22.0 追问图片记忆修复版)"}
+    return {"message": "AI解题后端服务正在运行 (V24.0 整页多题并行处理版)"}
+
+# --- Pydantic模型定义（需要在使用前定义） ---
+class ChatRequest(BaseModel):
+    session_id: Optional[str] = None
+    prompt: str
+    image_base_64: Optional[str] = None
+
+class SheetProcessRequest(BaseModel):
+    prompt: str
+    image_base_64: str
+
+# ==============================================================================
+# V24.0 新增端点: 整页题目分割处理
+# ==============================================================================
+
+@app.post("/process_sheet")
+async def process_sheet(request: SheetProcessRequest):
+    """
+    V24.0 新增: 处理完整题目页的端点。
+    
+    工作流程：
+    1. 接收一张完整的页面图片
+    2. 使用题目分割器找到独立的题目区域
+    3. 将每个题目裁剪成独立的图片
+    4. 将裁剪后的题目单元列表（ID和图片数据）返回给前端
+    
+    返回格式：
+    {
+        "job_id": "job_xxx",
+        "questions": [
+            {"id": "q_xxx", "image_base_64": "...", "index": 0},
+            {"id": "q_yyy", "image_base_64": "...", "index": 1},
+            ...
+        ]
+    }
+    """
+    print(f"\n{'#'*80}")
+    print(f"# /process_sheet 端点被调用 - V24.0 整页分割处理")
+    print(f"# prompt: {request.prompt[:50]}...")
+    print(f"{'#'*80}")
+    
+    try:
+        # 1. 解码完整图片
+        print("[/process_sheet] 步骤1/4: 解码图片...")
+        image_bytes = base64.b64decode(request.image_base_64)
+        full_image = Image.open(io.BytesIO(image_bytes))
+        print(f"[/process_sheet] ✓ 图片解码成功，尺寸: {full_image.width}x{full_image.height}")
+        
+        # 2. 使用题目分割器寻找所有题目的边界框
+        print("[/process_sheet] 步骤2/4: 智能检测题目区域...")
+        question_boxes = find_question_boxes(full_image)
+        
+        # 【可选】生成调试可视化图片
+        # 取消注释以启用调试
+        # from question_splitter import visualize_detected_boxes
+        # visualize_detected_boxes(full_image, question_boxes, "debug/detected_boxes.png")
+        
+        # 如果未找到任何框，则将整张图片视为一个题目
+        if not question_boxes or len(question_boxes) == 0:
+            print("[/process_sheet] ⚠️ 未找到独立的题目框，将整张图视为单个题目。")
+            question_boxes = [(0, 0, full_image.width, full_image.height)]
+        
+        # 3. 裁剪每个题目并准备响应数据
+        print(f"[/process_sheet] 步骤3/4: 裁剪 {len(question_boxes)} 个题目区域...")
+        question_units = []
+        
+        for i, (x, y, w, h) in enumerate(question_boxes):
+            # 【V24.1优化】增加边距padding，避免切到文字
+            # 从10px增加到20px，确保不遗漏边缘文字
+            padding = 20
+            crop_box = (
+                max(0, x - padding), 
+                max(0, y - padding), 
+                min(full_image.width, x + w + padding), 
+                min(full_image.height, y + h + padding)
+            )
+            
+            # 使用 Pillow 裁剪图片
+            question_image = full_image.crop(crop_box)
+            
+            # 将裁剪后的图片重新编码为 Base64 字符串
+            buffered = io.BytesIO()
+            question_image.save(buffered, format="PNG")
+            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            
+            question_units.append({
+                "id": f"q_{uuid.uuid4()}",  # 为每个题目单元生成唯一ID
+                "image_base_64": img_str,
+                "index": i  # 题目序号（从0开始）
+            })
+            
+            print(f"[/process_sheet]   ✓ 题目 {i+1}/{len(question_boxes)} 裁剪完成")
+        
+        # 4. 准备返回数据
+        job_id = f"job_{uuid.uuid4()}"
+        print(f"\n[/process_sheet] 步骤4/4: 准备返回数据...")
+        print(f"[/process_sheet] ✅ 成功将图片分割为 {len(question_units)} 个独立题目单元")
+        print(f"[/process_sheet] 📦 Job ID: {job_id}")
+        print(f"{'#'*80}\n")
+        
+        return JSONResponse(content={
+            "job_id": job_id,
+            "questions": question_units,
+            "total_count": len(question_units)
+        })
+        
+    except Exception as e:
+        print(f"\n{'!'*80}")
+        print(f"!!! 在 /process_sheet 中发生错误")
+        print(f"!!! 错误类型: {type(e).__name__}")
+        print(f"!!! 错误信息: {str(e)}")
+        print(f"{'!'*80}\n")
+        
+        import traceback
+        traceback.print_exc()
+        
+        raise HTTPException(status_code=500, detail=f"题目分割处理失败: {str(e)}")
 # ==============================================================================
 # 完整 main.py - 第二部分: 核心API接口
 # ==============================================================================
@@ -89,20 +211,39 @@ def image_preprocess_v2(img: Image.Image) -> Image.Image:
     
     return img
 
-# --- OCR识别函数 (使用Pix2Text) ---
-def extract_text_with_pix2text(image: Image.Image) -> str:
+# --- OCR识别函数 (使用Pix2Text) - V23.0升级版 ---
+def extract_text_with_pix2text(image: Image.Image, enhancement_mode: str = 'light') -> str:
     """
-    使用Pix2Text识别图片中的文字和公式，返回清洁的LaTeX文本
+    使用Pix2Text识别图片中的文字和公式，返回清洁的LaTeX文本。
+    
+    【V24.1 优化】: 默认改为轻量增强，避免过度处理丢失信息
+    
+    参数:
+        image: PIL格式的输入图像
+        enhancement_mode: 增强模式
+            - 'none': 无处理（推荐清晰图片）
+            - 'light': 轻量增强（新默认，推荐）
+            - 'standard': 标准增强
+            - 'aggressive': 激进增强（适合严重模糊/污损）
+            - 'binary': 二值化（适合极端光照）
     """
     if p2t is None:
         return "[OCR引擎未初始化]"
     
     try:
-        # 预处理图片
-        processed_img = image_preprocess_v2(image)
+        print(f"\n[OCR流程] 开始识别... (增强模式: {enhancement_mode})")
         
-        # 使用Pix2Text识别
-        result = p2t.recognize(processed_img)
+        # 步骤1: 基础标准化 (尺寸调整等)
+        print("[OCR流程] 步骤1/3: 基础标准化...")
+        base_processed_img = image_preprocess_v2(image)
+        
+        # 步骤2: 调用高级图像增强流水线
+        print("[OCR流程] 步骤2/3: 高级图像增强...")
+        enhanced_img = advanced_image_processing_pipeline(base_processed_img, mode=enhancement_mode)
+        
+        # 步骤3: 使用增强后的图片进行Pix2Text识别
+        print("[OCR流程] 步骤3/3: Pix2Text识别...")
+        result = p2t.recognize(enhanced_img)
         
         # 提取文本内容
         if isinstance(result, dict) and 'text' in result:
@@ -116,11 +257,37 @@ def extract_text_with_pix2text(image: Image.Image) -> str:
         ocr_text = re.sub(r'\n\s*\n\s*\n+', '\n\n', ocr_text)  # 多个空行合并为两个
         ocr_text = ocr_text.strip()
         
-        print(f"[OCR识别成功] 提取了 {len(ocr_text)} 个字符")
+        print(f"\n{'='*60}")
+        print(f"[OCR识别成功] ✅ 提取了 {len(ocr_text)} 个字符")
+        print(f"{'='*60}\n")
+        
         return ocr_text
     
     except Exception as e:
+        print(f"\n{'!'*60}")
         print(f"!!! OCR识别失败: {e}")
+        print(f"{'!'*60}\n")
+        
+        # 降级策略：如果增强后识别失败，尝试用原图再识别一次
+        if enhancement_mode != 'none':
+            print("[OCR流程] 尝试降级策略：使用原图重新识别...")
+            try:
+                result = p2t.recognize(image)
+                if isinstance(result, dict) and 'text' in result:
+                    ocr_text = result['text']
+                elif isinstance(result, str):
+                    ocr_text = result
+                else:
+                    ocr_text = str(result)
+                
+                ocr_text = re.sub(r'\n\s*\n\s*\n+', '\n\n', ocr_text)
+                ocr_text = ocr_text.strip()
+                print(f"[OCR降级策略] ✓ 识别成功，提取了 {len(ocr_text)} 个字符")
+                return ocr_text
+            except Exception as fallback_error:
+                print(f"[OCR降级策略] ✗ 降级识别也失败: {fallback_error}")
+                return "[OCR识别失败]"
+        
         return "[OCR识别失败]"
 
 # --- 统一的AI调用函数 ---
@@ -162,86 +329,6 @@ def call_qwen_vl_max(messages: list, model: str = 'qwen-vl-max', max_tokens: int
     
     return {"content": text_content, "finish_reason": finish_reason, "is_truncated": is_truncated}
 
-# --- 流式调用通义千问 (生成器函数) ---
-def call_qwen_vl_max_stream(messages: list, model: str = 'qwen-vl-max', max_tokens: int = 8192):
-    """
-    流式调用通义千问模型，逐块返回内容
-    """
-    print(f"\n--- 正在流式调用通义千问 '{model}' API，历史记录有 {len(messages)} 条... ---")
-    
-    try:
-        responses = dashscope.MultiModalConversation.call(
-            model=model,
-            messages=messages,
-            max_output_tokens=max_tokens,
-            stream=True,
-            incremental_output=True  # 增量输出模式
-        )
-        
-        print(f"[API] 流式响应对象已创建，开始接收数据...")
-        
-        full_content = ""
-        chunk_count = 0
-        
-        for response in responses:
-            chunk_count += 1
-            print(f"[API] 收到第 {chunk_count} 个数据块")
-            print(f"[API] status_code: {response.status_code}")
-            
-            if response.status_code == 200:
-                choice = response.output.choices[0]
-                content_data = choice.message.content
-                finish_reason = choice.finish_reason if hasattr(choice, 'finish_reason') else None
-                
-                print(f"[API] finish_reason: {finish_reason}")
-                
-                # 提取文本内容
-                text_chunk = ""
-                if isinstance(content_data, list):
-                    for part in content_data:
-                        if part.get("text"):
-                            text_chunk = part["text"]
-                            break
-                elif isinstance(content_data, str):
-                    text_chunk = content_data
-                
-                if text_chunk:
-                    full_content += text_chunk
-                    print(f"[API] 本次收到 {len(text_chunk)} 字符，累计 {len(full_content)} 字符")
-                    yield {
-                        "chunk": text_chunk,
-                        "full_content": full_content,
-                        "finish_reason": finish_reason,
-                        "done": finish_reason is not None
-                    }
-                
-                # 如果完成了，退出
-                if finish_reason:
-                    print(f"--- 流式API调用完成, finish_reason: {finish_reason}, 总长度: {len(full_content)} ---")
-                    break
-            else:
-                error_msg = f"通义千问API调用失败: status_code={response.status_code}, message={response.message}"
-                print(f"!!! {error_msg}")
-                if hasattr(response, 'code'):
-                    print(f"!!! error code: {response.code}")
-                if hasattr(response, 'request_id'):
-                    print(f"!!! request_id: {response.request_id}")
-                yield {"error": error_msg, "done": True}
-                break
-                
-    except Exception as e:
-        error_msg = f"流式API调用异常: {type(e).__name__}: {str(e)}"
-        print(f"!!! {error_msg}")
-        import traceback
-        traceback.print_exc()
-        yield {"error": error_msg, "done": True}
-
-# --- Pydantic模型，用于校验前端发来的JSON数据 ---
-class ChatRequest(BaseModel):
-    session_id: Optional[str] = None
-    prompt: str
-    image_base_64: Optional[str] = None # 注意：我们用 base_64 替代了文件上传
-
 # --- 【全新】的统一聊天接口 (混合输入架构版) ---
 @app.post("/chat")
 async def chat_with_ai(request: ChatRequest):
@@ -268,13 +355,8 @@ async def chat_with_ai(request: ChatRequest):
             print(f"{'='*60}")
             
             if not request.image_base_64:
-                # 【修复】如果前端发送了session_id但后端不存在（服务重启），返回特殊错误
-                if request.session_id:
-                    print(f"[错误] 会话已失效（可能是服务重启），session_id: {session_id}")
-                    raise HTTPException(status_code=404, detail="会话已失效，请重新开始对话")
-                else:
-                    print(f"[错误] 新会话必须包含图片！")
-                    raise HTTPException(status_code=400, detail="新会话必须包含图片")
+                print(f"[错误] 新会话必须包含图片！")
+                raise HTTPException(status_code=400, detail="新会话必须包含图片")
             
             print(f"[新会话] 创建会话: {session_id}")
             print(f"[新会话] 图片大小: {len(request.image_base_64)} 字符")
@@ -315,16 +397,24 @@ async def chat_with_ai(request: ChatRequest):
             # B路: 保留原始图片
             print("[混合输入架构] 步骤2: 构建混合输入消息...")
             
-            # 构建增强Prompt - 将OCR文本嵌入到用户提示中
-            enhanced_prompt = f"""题目内容如下：
+            # 【V23.0 升级】构建带有容错和校正指令的增强Prompt
+            enhanced_prompt = f"""【任务背景】
+用户上传了一张题目图片。由于拍摄或试卷本身的原因，图片可能存在模糊、光照不均、少量污渍或手写笔记。
+我已经使用OCR工具对图片进行了初步识别，结果如下。
+
+【OCR初步识别结果】
 
 {ocr_text}
 
-【任务要求】
-{request.prompt}
+【你的核心任务】
+请你扮演一位严谨且经验丰富的学科辅导老师。你的首要任务是**将OCR结果与原始图片进行智能比对和校正**。
 
-【重要说明】
-你是一个专业的学科辅导AI助手，请认真分析题目，回答要像一位老师在面对面讲解，自然流畅，专注于教学内容本身
+1. **核对与修正**：仔细查看原始图片，如果发现OCR结果与图片内容有出入（例如，数字`1`被识别为`l`，`+`号模糊不清，某个文字因污渍无法识别），请**以原始图片为准，在你的分析中默默修正这些错误**。
+2. **专注解答**：基于你修正后的、最准确的题目内容，为用户提供清晰、详尽的解答或批改。
+3. **专业呈现**：在回答中，请直接使用你校正后的正确题目进行讲解。**不要向用户提及"OCR识别错误"、"图片模糊"等技术细节或问题诊断过程**，给用户一个无缝、专业的辅导体验。
+
+【用户的具体要求】
+{request.prompt}
 """
             
             # 构建混合输入消息: text(增强Prompt + OCR结果) + image(原始图片)
@@ -480,163 +570,4 @@ async def chat_with_ai(request: ChatRequest):
         # 确保临时文件总能被删除
         if temp_image_path and os.path.exists(temp_image_path):
             os.remove(temp_image_path)
-
-# --- 【新增】流式聊天接口 ---
-@app.post("/chat_stream")
-async def chat_with_ai_stream(request: ChatRequest):
-    """
-    流式聊天接口，使用Server-Sent Events (SSE)实时返回内容
-    """
-    print(f"\n{'#'*70}")
-    print(f"# /chat_stream 接口被调用")
-    print(f"# session_id: {request.session_id}")
-    print(f"# prompt: {request.prompt[:80]}...")
-    print(f"# has_image: {bool(request.image_base_64)}")
-    print(f"{'#'*70}")
-    
-    session_id = request.session_id or str(uuid.uuid4())
-    is_new_session = session_id not in SESSIONS
-    
-    async def event_generator():
-        try:
-            print(f"[流式] event_generator 开始执行")
-            print(f"[流式] is_new_session: {is_new_session}")
-            print(f"[流式] has_image: {bool(request.image_base_64)}")
-            if request.image_base_64:
-                print(f"[流式] image_base_64 长度: {len(request.image_base_64)}")
-            
-            # --- 1. 初始化或加载会话 ---
-            if is_new_session:
-                if not request.image_base_64:
-                    print("[流式错误] 新会话缺少图片！")
-                    yield f"data: {json.dumps({'error': '新会话必须包含图片'})}\n\n"
-                    return
-                
-                print(f"[流式] 创建新会话，图片大小: {len(request.image_base_64)} 字符")
-                SESSIONS[session_id] = {
-                    "history": [],
-                    "title": "新对话",
-                    "image_base_64": request.image_base_64
-                }
-                # 发送session_id给前端
-                yield f"data: {json.dumps({'session_id': session_id, 'title': '新对话'})}\n\n"
-                print(f"[流式] 会话创建完成: {session_id}")
-            else:
-                if session_id not in SESSIONS:
-                    yield f"data: {json.dumps({'error': f'会话 {session_id} 不存在'})}\n\n"
-                    return
-            
-            # --- 2. 构建消息（与原逻辑相同）---
-            messages_to_send = []
-            if is_new_session:
-                # OCR识别
-                print("[流式] 开始进行OCR识别...")
-                image_bytes = base64.b64decode(request.image_base_64)
-                print(f"[流式] 图片解码完成，字节数: {len(image_bytes)}")
-                image = Image.open(io.BytesIO(image_bytes))
-                print(f"[流式] 图片打开完成，尺寸: {image.size}")
-                ocr_text = extract_text_with_pix2text(image)
-                print(f"[流式] OCR识别完成！提取了 {len(ocr_text)} 个字符")
-                print(f"[流式] OCR文本预览: {ocr_text[:200]}...")
-                
-                # 构建混合输入消息
-                enhanced_prompt = f"""题目内容如下：
-
-{ocr_text}
-
-【任务要求】
-{request.prompt}
-
-【重要说明】
-你是一个专业的学科辅导AI助手，请认真分析题目，回答要像一位老师在面对面讲解，自然流畅，专注于教学内容本身
-"""
-                print(f"[流式] 增强Prompt已构建，总长度: {len(enhanced_prompt)}")
-                messages_to_send.append({
-                    "role": "user",
-                    "content": [
-                        {'text': enhanced_prompt},
-                        {'image': f"data:image/png;base64,{request.image_base_64}"}
-                    ]
-                })
-                print(f"[流式] 消息已添加，包含OCR文本和原始图片")
-            else:
-                # 追问模式：重建对话历史
-                original_image_base64 = SESSIONS[session_id].get("image_base_64")
-                if not original_image_base64:
-                    yield f"data: {json.dumps({'error': '会话图片丢失'})}\n\n"
-                    return
-                
-                history = SESSIONS[session_id]["history"]
-                first_user_message = history[0]
-                
-                messages_to_send = [{
-                    "role": "user",
-                    "content": [
-                        {'text': first_user_message["content"]},
-                        {'image': f"data:image/png;base64,{original_image_base64}"}
-                    ]
-                }]
-                
-                for msg in history[1:]:
-                    messages_to_send.append(msg)
-                
-                messages_to_send.append({"role": "user", "content": request.prompt})
-            
-            # --- 3. 流式调用AI ---
-            print(f"\n[流式] 准备调用通义千问API")
-            print(f"[流式] messages_to_send 数量: {len(messages_to_send)}")
-            for i, msg in enumerate(messages_to_send):
-                print(f"[流式] Message {i}: role={msg.get('role')}")
-                content = msg.get('content')
-                if isinstance(content, list):
-                    print(f"[流式]   content是列表，包含 {len(content)} 个元素")
-                    for j, item in enumerate(content):
-                        if 'text' in item:
-                            text_preview = item['text'][:100] if len(item['text']) > 100 else item['text']
-                            print(f"[流式]     [{j}] text: {text_preview}...")
-                        if 'image' in item:
-                            image_data = item['image']
-                            if image_data.startswith('data:image'):
-                                print(f"[流式]     [{j}] image: data:image/png;base64,... (长度: {len(image_data)})")
-                            else:
-                                print(f"[流式]     [{j}] image: {image_data[:50]}...")
-                elif isinstance(content, str):
-                    preview = content[:100] if len(content) > 100 else content
-                    print(f"[流式]   content是字符串: {preview}...")
-            
-            full_response = ""
-            for chunk_data in call_qwen_vl_max_stream(messages_to_send):
-                if "error" in chunk_data:
-                    yield f"data: {json.dumps(chunk_data)}\n\n"
-                    break
-                
-                full_response = chunk_data["full_content"]
-                # 发送增量数据给前端
-                yield f"data: {json.dumps(chunk_data)}\n\n"
-                
-                if chunk_data.get("done"):
-                    break
-            
-            # --- 4. 更新会话历史 ---
-            SESSIONS[session_id]["history"].append({"role": "user", "content": request.prompt})
-            SESSIONS[session_id]["history"].append({"role": "assistant", "content": full_response})
-            
-            # 发送完成信号
-            yield f"data: {json.dumps({'done': True, 'session_id': session_id})}\n\n"
-            
-        except Exception as e:
-            print(f"!!! /chat_stream 发生错误: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            yield f"data: {json.dumps({'error': str(e), 'done': True})}\n\n"
-    
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"  # 禁用nginx缓冲
-        }
-    )
 

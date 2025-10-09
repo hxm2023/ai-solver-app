@@ -1,9 +1,11 @@
 // ==============================================================================
-// 完整 App.tsx - 【V21.0 终极对话完整版】
+// 完整 App.tsx - 【V22.0 追问图片记忆修复版 + V19.0混合输入架构】
+// 后端：OCR增强（Pix2Text）+ 原图视觉（通义千问） + 追问带图片
+// 前端：手动续答逻辑
+// 核心修复：追问时后端重新发送图片，避免AI遗忘或幻觉
 // ==============================================================================
 
 import React, { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
 import { marked } from 'marked';
 import './App.css';
 import './ModeSelector.css';
@@ -21,9 +23,52 @@ type Message = {
   role: 'user' | 'assistant';
   content: string;
 };
+
+type SessionInfo = {
+  sessionId: string;
+  title: string;
+  timestamp: number;
+  mode: 'solve' | 'review';
+  imageSrc?: string;
+};
+
 interface MainAppProps {
   mode: 'solve' | 'review';
   onBack: () => void;
+}
+
+// --- 会话管理工具函数 ---
+const SESSION_STORAGE_KEY = 'ai_solver_sessions';
+
+function getSessions(): SessionInfo[] {
+  try {
+    const data = localStorage.getItem(SESSION_STORAGE_KEY);
+    return data ? JSON.parse(data) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSession(session: SessionInfo) {
+  const sessions = getSessions();
+  const existingIndex = sessions.findIndex(s => s.sessionId === session.sessionId);
+  
+  if (existingIndex >= 0) {
+    // 更新现有会话
+    sessions[existingIndex] = { ...sessions[existingIndex], ...session };
+  } else {
+    // 添加新会话（放在最前面）
+    sessions.unshift(session);
+  }
+  
+  // 只保留最近50个会话
+  const limitedSessions = sessions.slice(0, 50);
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(limitedSessions));
+}
+
+function deleteSession(sessionId: string) {
+  const sessions = getSessions().filter(s => s.sessionId !== sessionId);
+  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessions));
 }
 
 // --- 模式选择器组件 ---
@@ -64,8 +109,8 @@ function MainApp({ mode, onBack }: MainAppProps) {
   // --- 状态管理 ---
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatImageSrc, setChatImageSrc] = useState<string>('');
-  const [sessionId, setSessionId] = useState<string | null>(localStorage.getItem(`sessionId_${mode}`));
-  const [chatTitle, setChatTitle] = useState<string>(localStorage.getItem(`chatTitle_${mode}`) || "新对话");
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [chatTitle, setChatTitle] = useState<string>("新对话");
   const [userInput, setUserInput] = useState<string>('');
   const [solveType, setSolveType] = useState<'single' | 'full' | 'specific'>('single');
   const [specificQuestion, setSpecificQuestion] = useState<string>('');
@@ -73,10 +118,15 @@ function MainApp({ mode, onBack }: MainAppProps) {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [statusText, setStatusText] = useState<string>('');
+  const [showQuickButtons, setShowQuickButtons] = useState<boolean>(false); // 控制快捷按钮显示
   
   const [imageSrc, setImageSrc] = useState<string>('');
   const [crop, setCrop] = useState<Crop>();
-  const [isUploading, setIsUploading] = useState<boolean>(!sessionId); // 如果有会话记录，直接进入聊天
+  const [isUploading, setIsUploading] = useState<boolean>(true); // 默认显示上传界面
+  
+  // --- 【新增】侧边栏相关状态 ---
+  const [showSidebar, setShowSidebar] = useState<boolean>(false);
+  const [sessions, setSessions] = useState<SessionInfo[]>([]);
   
   const imgRef = useRef<HTMLImageElement | null>(null);
   const fileRef = useRef<File | null>(null);
@@ -91,7 +141,7 @@ function MainApp({ mode, onBack }: MainAppProps) {
       setTimeout(() => {
         const answerDivs = document.querySelectorAll('.message-content');
         if (answerDivs.length > 0 && window.MathJax?.typesetPromise) {
-          window.MathJax.typesetPromise(Array.from(answerDivs)).catch((err) => console.error('MathJax typeset error:', err));
+          window.MathJax.typesetPromise(Array.from(answerDivs)).catch((err: any) => console.error('MathJax typeset error:', err));
         }
       }, 100);
     }
@@ -101,105 +151,197 @@ function MainApp({ mode, onBack }: MainAppProps) {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
+  // --- 【新增】加载会话列表 ---
   useEffect(() => {
-    if (sessionId) {
-      localStorage.setItem(`sessionId_${mode}`, sessionId);
-      localStorage.setItem(`chatTitle_${mode}`, chatTitle);
-    } else {
-      localStorage.removeItem(`sessionId_${mode}`);
-      localStorage.removeItem(`chatTitle_${mode}`);
+    const allSessions = getSessions().filter(s => s.mode === mode);
+    setSessions(allSessions);
+  }, [mode]);
+  
+  // --- 【新增】保存当前会话到历史 ---
+  useEffect(() => {
+    if (sessionId && chatTitle && chatImageSrc) {
+      saveSession({
+        sessionId,
+        title: chatTitle,
+        timestamp: Date.now(),
+        mode,
+        imageSrc: chatImageSrc
+      });
+      // 刷新会话列表
+      setSessions(getSessions().filter(s => s.mode === mode));
     }
-  }, [sessionId, chatTitle, mode]);
+  }, [sessionId, chatTitle, chatImageSrc, mode]);
 
-  // --- 核心逻辑函数 ---
+  // --- 核心逻辑函数 (流式版本) ---
   const sendMessage = async (prompt: string, imageBlob?: Blob | File) => {
+    console.log('[sendMessage] 开始, imageBlob存在:', !!imageBlob);
+    
     setIsLoading(true);
     setError('');
+    setShowQuickButtons(false); // 发送消息时隐藏快捷按钮
+    setStatusText('正在连接AI...');
     
-    // 乐观更新UI
+    // 记录是否是第一次发送（有图片的情况）
+    const isFirstMessage = !!imageBlob;
+    console.log('[sendMessage] isFirstMessage:', isFirstMessage);
+    
+    // 添加用户消息到UI
+    const userMessage = { role: 'user' as const, content: prompt };
     if (!imageBlob) {
-      setMessages(prev => [...prev, { role: 'user', content: prompt }]);
+      setMessages(prev => [...prev, userMessage]);
+    } else {
+      setMessages([userMessage]);
     }
     setUserInput('');
 
     let currentSessionId = sessionId;
-    let currentAssistantResponse = '';
-    let isTruncated = true;
+    let hasError = false;
 
-    while (isTruncated) {
-      try {
-        let imageBase64: string | undefined = undefined;
-        if (imageBlob && currentAssistantResponse === '') {
-          imageBase64 = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-            reader.onerror = reject;
-            reader.readAsDataURL(imageBlob);
-          });
-        }
-
-        const response = await axios.post<any>(`${backendUrl}/chat`, {
-          session_id: currentSessionId,
-          prompt: currentAssistantResponse === '' ? prompt : "请接着你刚才说的继续。",
-          image_base_64: imageBase64,
+    try {
+      // 准备图片数据
+      let imageBase64: string | undefined = undefined;
+      if (imageBlob) {
+        imageBase64 = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+          reader.onerror = reject;
+          reader.readAsDataURL(imageBlob);
         });
+        console.log('[sendMessage] 图片转换为Base64完成');
+        console.log('[sendMessage] Base64长度:', imageBase64?.length);
+      } else {
+        console.log('[sendMessage] 没有图片数据');
+      }
 
-        const data = response.data;
-        
-        if (!currentSessionId) {
-          currentSessionId = data.session_id;
-          setSessionId(data.session_id);
-          if (data.title && data.title !== "新对话") setChatTitle(data.title);
+      // 构建请求体
+      const requestBody = {
+        session_id: currentSessionId,
+        prompt: prompt,
+        image_base_64: imageBase64,
+      };
+
+      console.log('[sendMessage] 请求体构建完成:');
+      console.log('  - session_id:', currentSessionId || '(新会话)');
+      console.log('  - prompt长度:', prompt.length);
+      console.log('  - has_image:', !!imageBase64);
+      console.log('[sendMessage] 发起流式请求...');
+      
+      // 【临时测试】先使用非流式接口确认图片传递是否正常
+      // TODO: 测试成功后改回 /chat_stream
+      console.log('[临时] 使用非流式接口 /chat 进行测试...');
+      const response = await fetch(`${backendUrl}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      // 【临时】非流式接口处理
+      const data = await response.json();
+      
+      // 检查HTTP错误
+      if (!response.ok) {
+        // 特殊处理404（会话失效）
+        if (response.status === 404) {
+          throw new Error(`404: ${data.detail || '会话已失效'}`);
         }
-
-        currentAssistantResponse += data.response;
-        isTruncated = data.is_truncated;
-        
-        const userMessage = { role: 'user' as const, content: prompt };
-        const assistantMessage = { role: 'assistant' as const, content: currentAssistantResponse };
+        throw new Error(`HTTP error! status: ${response.status}, ${data.detail || ''}`);
+      }
+      console.log('[临时] 收到非流式响应:', data);
+      
+      // 处理session_id
+      if (data.session_id && !currentSessionId) {
+        currentSessionId = data.session_id;
+        setSessionId(data.session_id);
+        if (data.title) setChatTitle(data.title);
+      }
+      
+      // 处理错误
+      if (data.error) {
+        setError(`错误: ${data.error}`);
+        hasError = true;
+      } else {
+        // 显示完整回答
+        const fullContent = data.response;
         
         if (!imageBlob) {
-            setMessages(prev => [...prev.slice(0, -1), userMessage, assistantMessage]);
+          setMessages(prev => [...prev, { role: 'assistant', content: fullContent }]);
         } else {
-            setMessages([userMessage, assistantMessage]);
+          setMessages([userMessage, { role: 'assistant', content: fullContent }]);
         }
         
-        if (isTruncated) {
-          setStatusText("答案稍长，正在加载后续回答...");
-        } else {
-          setStatusText('');
-        }
+        console.log('[临时] AI回答长度:', fullContent.length);
+      }
 
-      } catch (err) {
-        let detail = "未知错误";
-        if (axios.isAxiosError(err) && err.response) {
-          detail = err.response.data.detail || err.message;
-        } else if (err instanceof Error) {
+    } catch (err) {
+      hasError = true;
+      let detail = "未知错误";
+      
+      // 检查是否是会话失效错误（404）
+      if (err instanceof Error && err.message.includes('404')) {
+        console.log('[错误] 会话已失效，后端可能重启了');
+        setError(`会话已失效（可能是服务重启），请点击右上角"新对话"按钮重新开始`);
+        // 清空session相关状态
+        setSessionId(null);
+        setChatTitle("新对话");
+        
+        // 3秒后自动跳转到上传界面
+        setTimeout(() => {
+          setMessages([]);
+          setIsUploading(true);
+          setError('');
+        }, 3000);
+      } else {
+        if (err instanceof Error) {
           detail = err.message;
         }
         setError(`糟糕，出错了！错误详情: ${detail}`);
         console.error("请求错误:", err);
-        if (!imageBlob) {
-          setMessages(prev => prev.slice(0, -1));
-        }
-        isTruncated = false;
+      }
+      
+      // 如果出错，移除用户消息
+      if (!imageBlob) {
+        setMessages(prev => prev.slice(0, -1));
+      } else {
+        setMessages([]);
       }
     }
     
     setIsLoading(false);
+    setStatusText('');
+    
+    // 第一次AI回答后显示快捷按钮（只有成功时才显示）
+    if (isFirstMessage && !hasError) {
+      console.log('✅ 第一次回答完成，显示快捷按钮');
+      setShowQuickButtons(true);
+    } else {
+      console.log('[sendMessage] 不显示按钮 - isFirstMessage:', isFirstMessage, 'hasError:', hasError);
+    }
+  };
+
+  // 快捷按钮处理函数
+  const handleQuickButtonClick = (message: string) => {
+    sendMessage(message);
   };
 
   const handleInitialSend = (imageBlob: Blob | File, imageSrcForDisplay: string) => {
       let promptText = '';
       // 根据模式和solveType，动态生成初始prompt
       if (solveType === 'single') {
-        promptText = mode === 'solve' ? '请详细解答这道题目。' : '请详细批改这张同时包含题目和答案的图片。';
+        promptText = mode === 'solve' 
+          ? '请认真审题并详细解答，写出完整的解题过程和思路。' 
+          : '请认真批改这道题目，指出答案中的对错，如果答案错误就给出正确解法，回答正确就不用多说。';
       } else if (solveType === 'full') {
-        promptText = mode === 'solve' ? '请详细解答这张图片中的所有题目。' : '请详细批改这张图片中的所有题目。';
+        promptText = mode === 'solve' 
+          ? '请逐题解答，每道题都要写出详细的解题步骤和思路。' 
+          : '请逐题批改，对每道题的答案指出答案中的对错，如果答案错误就给出正确解法，回答正确就不用多说。';
       } else { // specific
         if (!specificQuestion) { setError('请输入你要指定的题目信息。'); return; }
-        const basePrompt = mode === 'solve' ? '请详细解答这道题目(不要考察别的题目)：' : '请详细批改这道题目(不要考察别的题目)：';
-        promptText = `${basePrompt} ${specificQuestion}`;
+        const basePrompt = mode === 'solve' 
+          ? '请只解答以下指定的题目，写出详细步骤：' 
+          : '请只批改以下指定的题目，指出答案中的对错，如果答案错误就给出正确解法，回答正确就不用多说：';
+        promptText = `${basePrompt}${specificQuestion}`;
       }
       setChatImageSrc(imageSrcForDisplay); 
       sendMessage(promptText, imageBlob);
@@ -235,9 +377,48 @@ function MainApp({ mode, onBack }: MainAppProps) {
     canvas.toBlob((blob) => {
       if (blob) {
         const croppedImageSrc = canvas.toDataURL('image/png');
-        handleInitialSend(blob, croppedImageSrc); // <<< 现在传递了两个参数！
+        handleInitialSend(blob, croppedImageSrc);
       }
     }, 'image/png');
+  };
+  
+  // --- 【新增】会话管理处理函数 ---
+  const handleLoadSession = (session: SessionInfo) => {
+    // 注意：这里我们只加载会话元数据，实际的消息历史在后端
+    setSessionId(session.sessionId);
+    setChatTitle(session.title);
+    setChatImageSrc(session.imageSrc || '');
+    setIsUploading(false);
+    setMessages([]); // 清空消息，因为后端会重建历史
+    setShowSidebar(false);
+    
+    // TODO: 如果需要，可以添加一个API来获取完整的历史记录
+    console.log('切换到会话:', session.sessionId);
+  };
+  
+  const handleDeleteSession = (sessionIdToDelete: string) => {
+    deleteSession(sessionIdToDelete);
+    setSessions(getSessions().filter(s => s.mode === mode));
+    
+    // 如果删除的是当前会话，回到上传界面
+    if (sessionIdToDelete === sessionId) {
+      setSessionId(null);
+      setChatTitle("新对话");
+      setChatImageSrc('');
+      setMessages([]);
+      setIsUploading(true);
+    }
+  };
+  
+  const handleNewChat = () => {
+    setSessionId(null);
+    setChatTitle("新对话");
+    setChatImageSrc('');
+    setMessages([]);
+    setIsUploading(true);
+    setImageSrc('');
+    setCrop(undefined);
+    setShowSidebar(false);
   };
 // ==============================================================================
 // 完整 App.tsx - 第三部分: UI渲染 (JSX)
@@ -245,9 +426,78 @@ function MainApp({ mode, onBack }: MainAppProps) {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>{isUploading ? (mode === 'solve' ? 'AI 智能解题' : 'AI 批改作业') : chatTitle}</h1>
         <button onClick={onBack} className="back-button">返回</button>
+        <h1>{isUploading ? (mode === 'solve' ? 'AI 智能解题' : 'AI 批改作业') : chatTitle}</h1>
+        <div className="header-actions">
+          <button onClick={() => setShowSidebar(!showSidebar)} className="history-button">
+            📚 历史记录
+          </button>
+          {!isUploading && (
+            <button onClick={handleNewChat} className="new-chat-button">
+              ➕ 新对话
+            </button>
+          )}
+        </div>
       </header>
+      
+      {/* --- 【新增】侧边栏 --- */}
+      {showSidebar && (
+        <>
+          <div className="sidebar-overlay" onClick={() => setShowSidebar(false)}></div>
+          <div className="sidebar">
+            <div className="sidebar-header">
+              <h2>历史记录</h2>
+              <button className="sidebar-close" onClick={() => setShowSidebar(false)}>✕</button>
+            </div>
+            <div className="sidebar-content">
+              {sessions.length === 0 ? (
+                <div className="no-sessions">
+                  <p>暂无历史记录</p>
+                  <p className="hint">开始解题后，这里会显示历史对话</p>
+                </div>
+              ) : (
+                <div className="session-list">
+                  {sessions.map((session) => (
+                    <div 
+                      key={session.sessionId} 
+                      className={`session-item ${session.sessionId === sessionId ? 'active' : ''}`}
+                    >
+                      <div className="session-preview" onClick={() => handleLoadSession(session)}>
+                        {session.imageSrc && (
+                          <img src={session.imageSrc} alt="题目预览" className="session-thumbnail" />
+                        )}
+                        <div className="session-info">
+                          <h3>{session.title}</h3>
+                          <p className="session-time">
+                            {new Date(session.timestamp).toLocaleString('zh-CN', {
+                              month: 'numeric',
+                              day: 'numeric',
+                              hour: 'numeric',
+                              minute: 'numeric'
+                            })}
+                          </p>
+                        </div>
+                      </div>
+                      <button 
+                        className="session-delete" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm('确定要删除这个会话吗？')) {
+                            handleDeleteSession(session.sessionId);
+                          }
+                        }}
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+      
       <main className="App-main">
         {error && <div className="error">{error}</div>}
 
@@ -331,7 +581,12 @@ function MainApp({ mode, onBack }: MainAppProps) {
                 <div className="message-bubble-wrapper assistant">
                   <div className="message-bubble assistant">
                     {statusText ? (
-                      <div className="status-text-inline">{statusText}</div>
+                      <div className="ai-thinking-indicator">
+                        <span>{statusText}</span>
+                        <div className="loading-dots">
+                          <span></span><span></span><span></span>
+                        </div>
+                      </div>
                     ) : (
                       <div className="typing-indicator">
                         <span></span><span></span><span></span>
@@ -340,27 +595,52 @@ function MainApp({ mode, onBack }: MainAppProps) {
                   </div>
                 </div>
               )}
-              {/* 我们不再需要手动的“继续回答”按钮了！ */}
+              {/* 我们不再需要手动的"继续回答"按钮了！ */}
               <div ref={chatEndRef}></div>
             </div>
             {/* --- 【核心修改】: 只有在有回答后才显示输入框 --- */}
             {messages.length > 0 && !isLoading && (
-              <div className="chat-input-area">
-                <textarea
-                  value={userInput}
-                  onChange={(e) => setUserInput(e.target.value)}
-                  placeholder="针对以上内容继续提问..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault();
-                      if(userInput.trim()) sendMessage(userInput);
-                    }
-                  }}
-                />
-                <button onClick={() => {if(userInput.trim()) sendMessage(userInput)}} disabled={!userInput.trim()}>
-                  发送
-                </button>
-              </div>
+              <>
+                {/* 调试信息 */}
+                {console.log('[UI渲染] showQuickButtons:', showQuickButtons, 'messages.length:', messages.length, 'isLoading:', isLoading)}
+                
+                {/* --- 【新增】快捷按钮 --- */}
+                {showQuickButtons && (
+                  <div className="quick-buttons-container">
+                    <button 
+                      className="quick-button quick-button-continue"
+                      onClick={() => handleQuickButtonClick('请继续回答')}
+                    >
+                      <span className="quick-button-icon">💬</span>
+                      <span>请继续回答</span>
+                    </button>
+                    <button 
+                      className="quick-button quick-button-check"
+                      onClick={() => handleQuickButtonClick('请检查回答是否有误')}
+                    >
+                      <span className="quick-button-icon">🔍</span>
+                      <span>请检查回答是否有误</span>
+                    </button>
+                  </div>
+                )}
+                
+                <div className="chat-input-area">
+                  <textarea
+                    value={userInput}
+                    onChange={(e) => setUserInput(e.target.value)}
+                    placeholder="针对以上内容继续提问..."
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        if(userInput.trim()) sendMessage(userInput);
+                      }
+                    }}
+                  />
+                  <button onClick={() => {if(userInput.trim()) sendMessage(userInput)}} disabled={!userInput.trim()}>
+                    发送
+                  </button>
+                </div>
+              </>
             )}
           </div>
         )}
