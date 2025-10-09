@@ -30,6 +30,8 @@ type SessionInfo = {
   timestamp: number;
   mode: 'solve' | 'review';
   imageSrc?: string;
+  messages?: Message[];  // 【新增】保存完整消息历史
+  imageBase64?: string;  // 【新增】保存图片Base64用于恢复后端会话
 };
 
 interface MainAppProps {
@@ -157,20 +159,25 @@ function MainApp({ mode, onBack }: MainAppProps) {
     setSessions(allSessions);
   }, [mode]);
   
-  // --- 【新增】保存当前会话到历史 ---
+  // --- 【新增】保存当前会话到历史（包含完整消息） ---
   useEffect(() => {
-    if (sessionId && chatTitle && chatImageSrc) {
+    if (sessionId && chatTitle && chatImageSrc && messages.length > 0) {
+      // 从localStorage获取imageBase64（在首次发送时保存）
+      const imageBase64 = localStorage.getItem(`image_${sessionId}`);
+      
       saveSession({
         sessionId,
         title: chatTitle,
         timestamp: Date.now(),
         mode,
-        imageSrc: chatImageSrc
+        imageSrc: chatImageSrc,
+        messages: messages,  // 保存完整消息历史
+        imageBase64: imageBase64 || undefined  // 保存图片Base64
       });
       // 刷新会话列表
       setSessions(getSessions().filter(s => s.mode === mode));
     }
-  }, [sessionId, chatTitle, chatImageSrc, mode]);
+  }, [sessionId, chatTitle, chatImageSrc, messages, mode]);
 
   // --- 核心逻辑函数 (流式版本) ---
   const sendMessage = async (prompt: string, imageBlob?: Blob | File) => {
@@ -255,6 +262,12 @@ function MainApp({ mode, onBack }: MainAppProps) {
         currentSessionId = data.session_id;
         setSessionId(data.session_id);
         if (data.title) setChatTitle(data.title);
+        
+        // 【新增】保存图片Base64到localStorage用于会话恢复
+        if (imageBase64) {
+          localStorage.setItem(`image_${data.session_id}`, imageBase64);
+          console.log('[会话] 已保存图片Base64到localStorage');
+        }
       }
       
       // 处理错误
@@ -383,22 +396,56 @@ function MainApp({ mode, onBack }: MainAppProps) {
   };
   
   // --- 【新增】会话管理处理函数 ---
-  const handleLoadSession = (session: SessionInfo) => {
-    // 注意：这里我们只加载会话元数据，实际的消息历史在后端
+  const handleLoadSession = async (session: SessionInfo) => {
+    console.log('[会话恢复] 开始加载会话:', session.sessionId);
+    
+    // 恢复前端状态
     setSessionId(session.sessionId);
     setChatTitle(session.title);
     setChatImageSrc(session.imageSrc || '');
     setIsUploading(false);
-    setMessages([]); // 清空消息，因为后端会重建历史
+    setMessages(session.messages || []); // 恢复消息历史
     setShowSidebar(false);
     
-    // TODO: 如果需要，可以添加一个API来获取完整的历史记录
-    console.log('切换到会话:', session.sessionId);
+    console.log('[会话恢复] 已恢复消息数:', session.messages?.length || 0);
+    
+    // 【关键】恢复后端会话状态
+    if (session.messages && session.messages.length > 0 && session.imageBase64) {
+      try {
+        console.log('[会话恢复] 正在恢复后端会话状态...');
+        
+        // 调用后端API恢复会话
+        const response = await fetch(`${backendUrl}/restore_session`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            session_id: session.sessionId,
+            image_base_64: session.imageBase64,
+            history: session.messages
+          }),
+        });
+        
+        if (response.ok) {
+          console.log('[会话恢复] ✅ 后端会话状态恢复成功');
+        } else {
+          console.warn('[会话恢复] ⚠️ 后端会话恢复失败，但前端消息已加载');
+        }
+      } catch (error) {
+        console.error('[会话恢复] 恢复后端状态时出错:', error);
+        // 即使后端恢复失败，前端消息也已加载，用户可以查看历史
+      }
+    }
   };
   
   const handleDeleteSession = (sessionIdToDelete: string) => {
     deleteSession(sessionIdToDelete);
     setSessions(getSessions().filter(s => s.mode === mode));
+    
+    // 【新增】清理相关的localStorage数据
+    localStorage.removeItem(`image_${sessionIdToDelete}`);
+    console.log('[会话删除] 已清理图片数据');
     
     // 如果删除的是当前会话，回到上传界面
     if (sessionIdToDelete === sessionId) {

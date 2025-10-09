@@ -242,6 +242,11 @@ class ChatRequest(BaseModel):
     prompt: str
     image_base_64: Optional[str] = None # 注意：我们用 base_64 替代了文件上传
 
+class RestoreSessionRequest(BaseModel):
+    session_id: str
+    image_base_64: str
+    history: List[dict]  # 消息历史
+
 # --- 【全新】的统一聊天接口 (混合输入架构版) ---
 @app.post("/chat")
 async def chat_with_ai(request: ChatRequest):
@@ -302,8 +307,7 @@ async def chat_with_ai(request: ChatRequest):
             print(f"[继续会话] 历史记录数: {len(SESSIONS[session_id]['history'])}")
             print(f"[继续会话] 有原始图片: {bool(SESSIONS[session_id].get('image_base_64'))}")
             
-            
-        # --- 【核心创新】: 混合输入架构 - OCR文本 + 原始图片 ---
+        # --- 【核心创新 + 优化】: 混合输入架构 + 滑动窗口机制 ---
         messages_to_send = []
         if is_new_session:
             # A路: 使用Pix2Text进行OCR识别
@@ -325,6 +329,12 @@ async def chat_with_ai(request: ChatRequest):
 
 【重要说明】
 你是一个专业的学科辅导AI助手，请认真分析题目，回答要像一位老师在面对面讲解，自然流畅，专注于教学内容本身
+
+【LaTeX 书写规范】
+- 化学方程式：使用 \\ce{{}} 命令，如 \\ce{{H2O}}、\\ce{{A + B -> C}}
+- **禁止使用** \\chemfig 命令（不被支持），如需表示化学结构，直接用文字或 \\ce{{}} 描述
+- 数学公式：使用标准 LaTeX，支持 \\frac、\\sqrt、\\int、\\sum 等常用命令
+- 行内公式用 $...$ 包裹，独立公式用 $$...$$ 包裹
 """
             
             # 构建混合输入消息: text(增强Prompt + OCR结果) + image(原始图片)
@@ -339,16 +349,14 @@ async def chat_with_ai(request: ChatRequest):
             print("[混合输入架构] 混合消息构建完成，同时包含OCR文本和原始图片")
             
         else:
-            # 对于追问，需要重新构建完整的对话历史，包含原始图片
-            # 【关键修复】: 每次追问都要带上图片，避免AI遗忘或产生幻觉
-            print(f"\n[追问模式] 开始重新构建对话历史...")
+            # 【优化】追问模式 + 滑动窗口机制
+            print(f"\n[追问模式] 开始构建对话历史（滑动窗口优化）...")
             
             # 获取原始图片
             original_image_base64 = SESSIONS[session_id].get("image_base_64")
             
             if not original_image_base64:
                 print(f"[错误] 会话中没有找到原始图片！")
-                print(f"[错误] session数据: {SESSIONS[session_id].keys()}")
                 raise HTTPException(status_code=500, detail="会话图片丢失，请重新开始对话")
             
             print(f"[追问模式] ✓ 找到原始图片，大小: {len(original_image_base64)} 字符")
@@ -359,12 +367,13 @@ async def chat_with_ai(request: ChatRequest):
                 print(f"[错误] 会话历史为空！")
                 raise HTTPException(status_code=500, detail="会话历史为空，请重新开始对话")
             
-            print(f"[追问模式] ✓ 历史记录数: {len(history)}")
+            print(f"[追问模式] 📊 完整历史记录数: {len(history)}")
             
-            # 第一条消息：用户的首次提问 + 图片
+            # 【滑动窗口优化】只保留最近的对话
+            WINDOW_SIZE = 6  # 保留最近3轮对话（6条消息：3个问答对）
+            
+            # 第一条消息：用户的首次提问 + 图片（永远保留）
             first_user_message = history[0]
-            print(f"[追问模式] ✓ 首次提问: {first_user_message['content'][:50]}...")
-            
             messages_to_send = [{
                 "role": "user",
                 "content": [
@@ -372,20 +381,29 @@ async def chat_with_ai(request: ChatRequest):
                     {'image': f"data:image/png;base64,{original_image_base64}"}
                 ]
             }]
-            print(f"[追问模式] ✓ 第1条消息已构建（包含图片）")
+            print(f"[追问模式] ✓ 第1条消息（首次提问+图片）已添加")
             
-            # 添加后续的对话历史（跳过第一条，因为已经处理了）
-            for i, msg in enumerate(history[1:], start=2):
-                messages_to_send.append(msg)
-                print(f"[追问模式] ✓ 第{i}条消息已添加 ({msg['role']})")
+            # 计算窗口：从历史记录中取最近的N条
+            if len(history) > 1:
+                # 跳过第一条（已添加），取最后WINDOW_SIZE条
+                recent_history = history[1:]  # 去掉第一条
+                if len(recent_history) > WINDOW_SIZE:
+                    recent_history = recent_history[-WINDOW_SIZE:]  # 只取最后N条
+                    print(f"[追问模式] ⚡ 使用滑动窗口：保留最近 {len(recent_history)} 条消息")
+                else:
+                    print(f"[追问模式] 📝 历史较短：保留全部 {len(recent_history)} 条消息")
+                
+                # 添加窗口内的历史消息
+                for i, msg in enumerate(recent_history, start=2):
+                    messages_to_send.append(msg)
             
             # 添加当前的追问
             messages_to_send.append({"role": "user", "content": request.prompt})
-            print(f"[追问模式] ✓ 第{len(messages_to_send)}条消息已添加（当前追问）")
             
-            print(f"[追问模式] ✅ 对话历史重建完成！")
-            print(f"[追问模式] 📊 总消息数: {len(messages_to_send)} 条")
-            print(f"[追问模式] 📷 图片位置: 第1条消息中")
+            print(f"[追问模式] ✅ 对话历史构建完成！")
+            print(f"[追问模式] 📊 发送消息数: {len(messages_to_send)} 条（含首条+窗口+新问题）")
+            print(f"[追问模式] 💾 完整历史: {len(history)} 条 → 🚀 实际发送: {len(messages_to_send)} 条")
+            print(f"[追问模式] 📷 图片位置: 第1条消息中（始终保留）")
 
         
         # --- 3. 调用大模型 (删除自动续答，直接调用) ---
@@ -481,6 +499,39 @@ async def chat_with_ai(request: ChatRequest):
         if temp_image_path and os.path.exists(temp_image_path):
             os.remove(temp_image_path)
 
+# --- 【新增】会话恢复接口 ---
+@app.post("/restore_session")
+async def restore_session(request: RestoreSessionRequest):
+    """
+    恢复会话状态，用于从localStorage加载历史对话
+    """
+    print(f"\n{'='*70}")
+    print(f"[会话恢复] 开始恢复会话")
+    print(f"[会话恢复] session_id: {request.session_id}")
+    print(f"[会话恢复] 历史消息数: {len(request.history)}")
+    print(f"{'='*70}")
+    
+    try:
+        # 重建会话状态
+        SESSIONS[request.session_id] = {
+            "history": request.history,
+            "title": "恢复的对话",
+            "image_base_64": request.image_base_64
+        }
+        
+        print(f"[会话恢复] ✅ 会话恢复成功")
+        print(f"[会话恢复] 保存的历史记录数: {len(request.history)}")
+        
+        return JSONResponse(content={
+            "success": True,
+            "message": "会话恢复成功",
+            "history_count": len(request.history)
+        })
+        
+    except Exception as e:
+        print(f"[会话恢复] ❌ 恢复失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"会话恢复失败: {str(e)}")
+
 # --- 【新增】流式聊天接口 ---
 @app.post("/chat_stream")
 async def chat_with_ai_stream(request: ChatRequest):
@@ -549,6 +600,12 @@ async def chat_with_ai_stream(request: ChatRequest):
 
 【重要说明】
 你是一个专业的学科辅导AI助手，请认真分析题目，回答要像一位老师在面对面讲解，自然流畅，专注于教学内容本身
+
+【LaTeX 书写规范】
+- 化学方程式：使用 \\ce{{}} 命令，如 \\ce{{H2O}}、\\ce{{A + B -> C}}
+- **禁止使用** \\chemfig 命令（不被支持），如需表示化学结构，直接用文字或 \\ce{{}} 描述
+- 数学公式：使用标准 LaTeX，支持 \\frac、\\sqrt、\\int、\\sum 等常用命令
+- 行内公式用 $...$ 包裹，独立公式用 $$...$$ 包裹
 """
                 print(f"[流式] 增强Prompt已构建，总长度: {len(enhanced_prompt)}")
                 messages_to_send.append({

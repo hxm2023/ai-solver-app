@@ -14,20 +14,46 @@
       window.MathJax = {
         tex: {
           inlineMath: [['$', '$'], ['\\(', '\\)']],
-          displayMath: [['$$', '$$'], ['\\[', '\\]']]
+          displayMath: [['$$', '$$'], ['\\[', '\\]']],
+          packages: {'[+]': ['mhchem', 'ams', 'physics', 'braket', 'cancel']},
+          // 自定义宏：处理不支持的命令
+          macros: {
+            // chemfig 不被 MathJax 支持，将其转为可读文本提示
+            chemfig: ['\\colorbox{#FFFACD}{\\text{化学结构式}}', 1],
+            // 增强数学符号支持
+            rmd: '\\mathrm{d}',
+            Div: '\\mathrm{div}',
+            Curl: '\\mathrm{curl}',
+            Grad: '\\mathrm{grad}'
+          },
+          tags: 'ams'  // 支持自动公式编号
+        },
+        loader: {
+          load: ['[tex]/mhchem', '[tex]/ams', '[tex]/physics', '[tex]/braket', '[tex]/cancel']
         },
         options: {
-          skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code']
+          skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+          ignoreHtmlClass: 'tex2jax_ignore',
+          processHtmlClass: 'tex2jax_process'
         },
         svg: {
-          fontCache: 'global'
+          fontCache: 'global',
+          displayAlign: 'left',  // 公式左对齐
+          displayIndent: '2em'   // 缩进
+        },
+        startup: {
+          ready: () => {
+            console.log('✅ MathJax 增强版已加载');
+            console.log('📦 支持扩展: mhchem(化学), ams(数学), physics(物理), braket(量子), cancel(删除线)');
+            MathJax.startup.defaultReady();
+          }
         }
       };
     </script>
     
-    <!-- 3. 异步加载 MathJax 3 -->
+    <!-- 3. 异步加载 MathJax 3 完整版 (支持所有扩展) -->
     <script type="text/javascript" id="MathJax-script" async
-      src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
+      src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg-full.js">
     </script>
     
   </head>
