@@ -4,6 +4,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { marked } from 'marked';
 
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
@@ -140,7 +141,7 @@ const SimpleMistakeBook: React.FC = () => {
         count: 3,
         difficulty: '中等'
       }, {
-        timeout: 60000  // 增加到60秒超时
+        timeout: 300000  // 延长5倍到300秒（5分钟）
       });
       alert(`成功生成${response.data.questions.length}道题目！`);
       setSelectedMistakes(new Set());
@@ -148,7 +149,11 @@ const SimpleMistakeBook: React.FC = () => {
       setActiveTab('questions');
     } catch (error: any) {
       console.error('生成题目失败:', error);
-      alert('生成题目失败: ' + (error.response?.data?.detail || error.message));
+      if (error.code === 'ECONNABORTED') {
+        alert('生成超时，请稍后重试或减少题目数量');
+      } else {
+        alert('生成题目失败: ' + (error.response?.data?.detail || error.message));
+      }
     } finally {
       setLoading(false);
     }
@@ -187,7 +192,7 @@ const SimpleMistakeBook: React.FC = () => {
         count: paperConfig.count,
         difficulty: paperConfig.difficulty
       }, {
-        timeout: 120000  // 增加到120秒超时（题目多时需要更长时间）
+        timeout: 600000  // 延长5倍到600秒（10分钟），适应大量题目生成
       });
       
       alert(`成功生成${response.data.questions.length}道题目！`);
@@ -197,7 +202,11 @@ const SimpleMistakeBook: React.FC = () => {
       setActiveTab('questions');
     } catch (error: any) {
       console.error('生成题目失败:', error);
-      alert('生成题目失败: ' + (error.response?.data?.detail || error.message));
+      if (error.code === 'ECONNABORTED') {
+        alert('生成超时，请稍后重试或减少题目数量');
+      } else {
+        alert('生成题目失败: ' + (error.response?.data?.detail || error.message));
+      }
     } finally {
       setLoading(false);
     }
@@ -698,7 +707,16 @@ const SimpleMistakeBook: React.FC = () => {
                     lineHeight: '1.8'
                   }} 
                   className="math-content"
-                  dangerouslySetInnerHTML={{ __html: question.content.replace(/\n/g, '<br/>') }}
+                  dangerouslySetInnerHTML={{ 
+                    __html: (() => {
+                      try {
+                        return marked.parse(question.content) as string;
+                      } catch (err) {
+                        console.error('题目内容Markdown解析失败:', err);
+                        return question.content.replace(/\n/g, '<br/>');
+                      }
+                    })()
+                  }}
                   />
                   
 
@@ -707,7 +725,16 @@ const SimpleMistakeBook: React.FC = () => {
                     <span 
                       style={{ marginLeft: '10px' }} 
                       className="math-content"
-                      dangerouslySetInnerHTML={{ __html: question.answer.replace(/\n/g, '<br/>') }}
+                      dangerouslySetInnerHTML={{ 
+                        __html: (() => {
+                          try {
+                            return marked.parse(question.answer) as string;
+                          } catch (err) {
+                            console.error('答案Markdown解析失败:', err);
+                            return question.answer.replace(/\n/g, '<br/>');
+                          }
+                        })()
+                      }}
                     />
                   </div>
 
@@ -725,7 +752,16 @@ const SimpleMistakeBook: React.FC = () => {
                           whiteSpace: 'pre-wrap',
                           lineHeight: '1.8'
                         }}
-                        dangerouslySetInnerHTML={{ __html: question.explanation.replace(/\n/g, '<br/>') }}
+                        dangerouslySetInnerHTML={{ 
+                          __html: (() => {
+                            try {
+                              return marked.parse(question.explanation) as string;
+                            } catch (err) {
+                              console.error('解析Markdown解析失败:', err);
+                              return question.explanation.replace(/\n/g, '<br/>');
+                            }
+                          })()
+                        }}
                       />
                     </div>
                   )}
