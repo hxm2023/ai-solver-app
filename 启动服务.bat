@@ -4,8 +4,8 @@ echo    AI解题系统 - 服务启动脚本
 echo ========================================
 echo.
 
-echo [1/2] 启动后端服务...
-start "后端服务" cmd /k "cd backend && python -m uvicorn main:app --reload"
+echo [1/2] 启动后端服务（使用虚拟环境）...
+start "后端服务" cmd /k "cd backend && venv\Scripts\activate.bat && python -m uvicorn main:app --reload"
 timeout /t 3 /nobreak >nul
 
 echo [2/2] 启动前端服务...

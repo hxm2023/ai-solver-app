@@ -1,0 +1,11 @@
+打开CMD，逐行复制执行以下命令：
+
+cd /d "C:\Users\hxm\有用的东西\ai-solver-mvp\backend\venv\Scripts"
+pip.exe install sqlalchemy passlib[bcrypt] python-jose[cryptography] python-multipart reportlab python-docx
+pip.exe list | findstr "sqlalchemy passlib jose"
+pause
+
+如果看到这些包的名字和版本号，说明安装成功！
+
+然后重新启动后端服务。
+

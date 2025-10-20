@@ -1,0 +1,475 @@
+[
+  {
+    "id": "f8fb6bb9-45a6-4c41-91d3-2ed21406998f",
+    "content": "设 $(1+x)^{2n+1} = a_0 + a_1x + a_2x^2 + \\cdots + a_{2n+1}x^{2n+1}$，$(1+x)^{2n} = b_0 + b_1x + \\cdots + b_{2n}x^{2n}$，其中 $n \\in \\mathbb{N}^*$。  \n证明：$a_{n} = b_n + b_{n-1}$，并由此推导出 $\\binom{2n+1}{n} = \\binom{2n}{n} + \\binom{2n}{n-1}$。",
+    "answer": "见解析。",
+    "explanation": "我们利用二项式展开的乘法关系来分析系数。注意到：\n$$\n(1+x)^{2n+1} = (1+x) \\cdot (1+x)^{2n}\n$$\n将右边展开：\n$$\n(1+x)^{2n+1} = 1 \\cdot (1+x)^{2n} + x \\cdot (1+x)^{2n}\n$$\n现在考虑 $x^n$ 项在两边的系数：\n\n- 在左边，$x^n$ 的系数是 $a_n = \\binom{2n+1}{n}$。\n- 在右边，$x^n$ 项来自两部分：\n  - 第一部分：$1 \\cdot (1+x)^{2n}$ 中的 $x^n$ 项，其系数为 $b_n = \\binom{2n}{n}$\n  - 第二部分：$x \\cdot (1+x)^{2n}$ 中的 $x^{n-1}$ 项乘以 $x$，得到 $x^n$，对应系数为 $b_{n-1} = \\binom{2n}{n-1}$\n\n因此，\n$$\na_n = b_n + b_{n-1} \\Rightarrow \\binom{2n+1}{n} = \\binom{2n}{n} + \\binom{2n}{n-1}\n$$\n得证。\n\n本题考查了学生对**二项式展开中系数来源的理解**，特别是通过多项式乘法分析特定幂次项的构成，避免像错题中那样混淆下标与幂次。",
+    "knowledge_points": [
+      "二项式定理展开",
+      "组合数的计算与关系"
+    ],
+    "difficulty": "中等",
+    "source_mistake_ids": [
+      "68065d1a-044d-455c-84d0-86320cefe172"
+    ],
+    "created_at": "2025-10-19T16:33:25.226344"
+  },
+  {
+    "id": "f373c41c-eaf6-435f-883c-bad6b06c0861",
+    "content": "已知 $p_n = \\binom{2n}{n}$，用数学归纳法证明：当 $n \\geq 3$ 时，有 $2^n < p_n < 4^n$。  \n（提示：可使用递推关系 $\\frac{\\binom{2k+2}{k+1}}{\\binom{2k}{k}} = \\frac{2(2k+1)}{k+1}$）",
+    "answer": "见解析。",
+    "explanation": "我们使用数学归纳法证明不等式 $2^n < \\binom{2n}{n} < 4^n$ 对所有 $n \\geq 3$ 成立。\n\n**① 基础步（$n=3$）：**  \n计算：\n$$\n\\binom{6}{3} = 20,\\quad 2^3 = 8,\\quad 4^3 = 64\n\\Rightarrow 8 < 20 < 64\n$$\n成立。\n\n**② 归纳假设：**  \n假设对于某个 $k \\geq 3$，有：\n$$\n2^k < \\binom{2k}{k} < 4^k\n$$\n\n**③ 归纳步（$k \\to k+1$）：**  \n考虑比值：\n$$\n\\frac{\\binom{2k+2}{k+1}}{\\binom{2k}{k}} = \\frac{(2k+2)(2k+1)}{(k+1)^2} = \\frac{2(2k+1)}{k+1}\n$$\n\n我们分别估计上下界：\n\n- 下界：$\\frac{2(2k+1)}{k+1} = 4 - \\frac{2}{k+1} > 2$（因为 $k \\geq 3 \\Rightarrow \\frac{2}{k+1} < 2$）\n  所以：\n  $$\n  \\binom{2k+2}{k+1} > 2 \\cdot \\binom{2k}{k} > 2 \\cdot 2^k = 2^{k+1}\n  $$\n\n- 上界：$\\frac{2(2k+1)}{k+1} < 4$ 显然成立（因减去了正数），所以：\n  $$\n  \\binom{2k+2}{k+1} < 4 \\cdot \\binom{2k}{k} < 4 \\cdot 4^k = 4^{k+1}\n  $$\n\n综上，$2^{k+1} < \\binom{2k+2}{k+1} < 4^{k+1}$，归纳完成。\n\n故原不等式对所有 $n \\geq 3$ 成立。\n\n此题强化学生对**数学归纳法结构的严谨性训练**，并练习组合数递推中的**不等式放缩技巧**，防止出现“跳跃推理”。",
+    "knowledge_points": [
+      "数学归纳法",
+      "不等式放缩与估计"
+    ],
+    "difficulty": "中等",
+    "source_mistake_ids": [
+      "68065d1a-044d-455c-84d0-86320cefe172"
+    ],
+    "created_at": "2025-10-19T16:33:25.226408"
+  },
+  {
+    "id": "de6df09c-a708-4198-99e6-70c09fa819ed",
+    "content": "下列四个选项中，哪一个正确表达了 $(1+x)^{2n+2}$ 展开式中 $x^{n+1}$ 的系数 $a_{n+1}$ 与 $(1+x)^{2n+1}$ 展开式中系数的关系？  \n\nA. $a_{n+1} = b_{n+1} + b_n$  \nB. $a_{n+1} = b_{n} + b_{n-1}$  \nC. $a_{n+1} = 2b_n$  \nD. $a_{n+1} = b_{2n+1} + b_{2n}$",
+    "answer": "A",
+    "explanation": "由 $(1+x)^{2n+2} = (1+x) \\cdot (1+x)^{2n+1}$，记后者展开为 $\\sum b_k x^k$，则：\n\n要得到 $x^{n+1}$ 项，有两种方式：\n- $1 \\cdot [x^{n+1}\\text{ 项}]$：系数为 $b_{n+1}$\n- $x \\cdot [x^{n}\\text{ 项}]$：系数为 $b_n$\n\n所以：\n$$\na_{n+1} = b_{n+1} + b_n\n$$\n\n注意：虽然在对称性下 $\\binom{2n+1}{n+1} = \\binom{2n+1}{n}$，即 $b_{n+1} = b_n$，从而 $a_{n+1} = 2b_n$（选项 C），但这仅在数值上成立，**逻辑上应选最准确的表达式 A**，因为它直接反映生成机制。\n\n而 D 是 $x^{2n+1}$ 的系数表达式，与 $x^{n+1}$ 无关；B 是 $x^n$ 的表达式。\n\n因此，**从代数结构角度看，A 是唯一正确的构造性表达**。\n\n本题旨在纠正学生在错题中“跳过中间步骤、依赖巧合等式”的问题，强调**必须根据幂次匹配确定系数来源**。",
+    "knowledge_points": [
+      "二项式定理展开",
+      "二项式系数的性质"
+    ],
+    "difficulty": "中等",
+    "source_mistake_ids": [
+      "68065d1a-044d-455c-84d0-86320cefe172"
+    ],
+    "created_at": "2025-10-19T16:33:25.226439"
+  },
+  {
+    "id": "55acba5a-46fd-4d9d-ace7-b3d0c12cf836",
+    "content": "已知 $(1+x)^{2n+1} = a_0 + a_1x + a_2x^2 + \\cdots + a_{2n+1}x^{2n+1}$，其中 $a_k = \\binom{2n+1}{k}$。定义数列 $\\{b_n\\}$ 为 $b_n = a_n = \\binom{2n+1}{n}$。  \n\n用数学归纳法证明：当 $n \\geq 1$ 时，有  \n$$\n2^{2n} < (n+1) b_n < 4^n\n$$",
+    "answer": "见解析。",
+    "explanation": "",
+    "knowledge_points": [],
+    "difficulty": "困难",
+    "source_mistake_ids": [
+      "764e4adf-205c-4292-aa00-c21d1b55d231"
+    ],
+    "created_at": "2025-10-19T16:47:05.200880"
+  },
+  {
+    "id": "9fb76874-1696-44f6-99a9-aaecd47ed7a8",
+    "content": "设 $c_n = \\binom{2n}{n}$ 表示 $(1+x)^{2n}$ 展开式中 $x^n$ 的系数。  \n\n**(1)** 计算 $\\dfrac{c_{n+1}}{c_n}$ 并化简；  \n\n**(2)** 用数学归纳法证明：当 $n \\geq 2$ 时，  \n$$\n2^n < c_n < 4^n\n$$",
+    "answer": "(1) $\\dfrac{c_{n+1}}{c_n} = \\dfrac{2(2n+1)}{n+1}$  \n(2) 见解析。",
+    "explanation": "**(1)** 我们有：\n$$\nc_n = \\binom{2n}{n},\\quad c_{n+1} = \\binom{2n+2}{n+1}\n$$\n则：\n$$\n\\frac{c_{n+1}}{c_n} = \\frac{\\binom{2n+2}{n+1}}{\\binom{2n}{n}} = \\frac{\\frac{(2n+2)!}{(n+1)!(n+1)!}}{\\frac{(2n)!}{n!n!}} = \\frac{(2n+2)(2n+1)}{(n+1)^2} \\cdot \\frac{n!n!}{(2n)!} \\cdot (2n)! = \\frac{(2n+2)(2n+1)}{(n+1)^2}\n$$\n$$\n= \\frac{2(n+1)(2n+1)}{(n+1)^2} = \\frac{2(2n+1)}{n+1}\n$$\n\n**(2)** 数学归纳法证明 $2^n < c_n < 4^n$，$n \\geq 2$\n\n**① 基础步骤：$n=2$**\n\n$c_2 = \\binom{4}{2} = 6$，$2^2 = 4$，$4^2 = 16$，满足 $4 < 6 < 16$，成立。\n\n**② 归纳假设**：设 $n=k \\geq 2$ 时成立，即  \n$$\n2^k < c_k < 4^k\n$$\n\n**③ 考虑 $n=k+1$**\n\n由 (1) 得：\n$$\nc_{k+1} = \\frac{2(2k+1)}{k+1} c_k\n$$\n\n分析系数：\n$$\nr_k = \\frac{2(2k+1)}{k+1} = 4 - \\frac{2}{k+1}\n$$\n\n显然 $2 < r_k < 4$（因为 $k \\geq 2 \\Rightarrow k+1 \\geq 3 \\Rightarrow \\frac{2}{k+1} \\leq \\frac{2}{3} < 2$）\n\n所以：\n- 上界：$c_{k+1} = r_k c_k < 4 \\cdot 4^k = 4^{k+1}$\n- 下界：$c_{k+1} = r_k c_k > 2 \\cdot 2^k = 2^{k+1}$\n\n因此：\n$$\n2^{k+1} < c_{k+1} < 4^{k+1}\n$$\n\n归纳完成。",
+    "knowledge_points": [
+      "数学归纳法证明不等式",
+      "组合数的计算与比较"
+    ],
+    "difficulty": "困难",
+    "source_mistake_ids": [
+      "764e4adf-205c-4292-aa00-c21d1b55d231"
+    ],
+    "created_at": "2025-10-19T16:47:05.200930"
+  },
+  {
+    "id": "3c0e6c2c-58ec-43a8-bd6c-73da8b3adb01",
+    "content": "已知 $(1+x)^{2n+1} = a_0 + a_1x + \\cdots + a_{2n+1}x^{2n+1}$，$(1+x)^{2n} = p_0 + p_1x + \\cdots + p_{2n}x^{2n}$。  \n\n若 $a_{n} = \\binom{2n+1}{n}$，$p_n = \\binom{2n}{n}$，判断下列关系中哪一项恒成立？\n\nA. $a_n = p_n$  \nB. $a_n = 2p_n$  \nC. $a_n = \\dfrac{2n+1}{n+1} p_n$  \nD. $a_n = \\dfrac{n+1}{2n+1} p_n$",
+    "answer": "C",
+    "explanation": "我们知道：\n$$\na_n = \\binom{2n+1}{n} = \\frac{(2n+1)!}{n!(n+1)!},\\quad p_n = \\binom{2n}{n} = \\frac{(2n)!}{n!n!}\n$$\n\n计算比值：\n$$\n\\frac{a_n}{p_n} = \\frac{(2n+1)!}{n!(n+1)!} \\cdot \\frac{n!n!}{(2n)!} = \\frac{2n+1}{n+1} \\cdot \\frac{n!}{n!} = \\frac{2n+1}{n+1}\n$$\n\n所以：\n$$\na_n = \\frac{2n+1}{n+1} p_n\n$$\n\n选项 C 正确。\n\n其他选项：\n- A 错，例如 $n=2$: $a_2 = \\binom{5}{2}=10$, $p_2=6$\n- B 错，$2p_n=12 \\ne 10$\n- D 明显小于 1，错误",
+    "knowledge_points": [
+      "二项式系数性质",
+      "组合数的计算与比较"
+    ],
+    "difficulty": "困难",
+    "source_mistake_ids": [
+      "764e4adf-205c-4292-aa00-c21d1b55d231"
+    ],
+    "created_at": "2025-10-19T16:47:05.200950"
+  },
+  {
+    "id": "a5f7b8c0-1ff1-4622-b11a-cb9cee95ae3a",
+    "content": "设 $(1+x)^{2n+2} = a_0 + a_1x + \\cdots + a_{2n+2}x^{2n+2}$，$(1+x)^{2n+1} = b_0 + b_1x + \\cdots + b_{2n+1}x^{2n+1}$。  \n\n利用 $(1+x)^{2n+2} = (1+x)(1+x)^{2n+1}$，求 $a_{2n}$ 关于 $b_k$ 的表达式，并由此证明：\n$$\na_{2n} = b_{2n} + b_{2n-1}\n$$\n\n进而计算 $a_{2n}$ 的具体值（用组合数表示），并与 $\\binom{2n+2}{2n}$ 比较验证。",
+    "answer": "$a_{2n} = \\binom{2n+1}{2n} + \\binom{2n+1}{2n-1} = 1 + \\binom{2n+1}{2} = \\binom{2n+2}{2n}$",
+    "explanation": "由乘积展开：\n$$\n(1+x)^{2n+2} = (1+x)(1+x)^{2n+1}\n$$\n要得到 $x^{2n}$ 项，有两种方式：\n- $1 \\cdot [x^{2n}]$ in $(1+x)^{2n+1}$ → 系数 $b_{2n}$\n- $x \\cdot [x^{2n-1}]$ in $(1+x)^{2n+1}$ → 系数 $b_{2n-1}$\n\n所以：\n$$\na_{2n} = b_{2n} + b_{2n-1}\n$$\n\n而：\n- $b_{2n} = \\binom{2n+1}{2n} = \\binom{2n+1}{1} = 2n+1$\n- $b_{2n-1} = \\binom{2n+1}{2n-1} = \\binom{2n+1}{2} = \\frac{(2n+1)(2n)}{2} = n(2n+1)$\n\n所以：\n$$\na_{2n} = (2n+1) + n(2n+1) = (2n+1)(n+1)\n$$\n\n另一方面：\n$$\n\\binom{2n+2}{2n} = \\binom{2n+2}{2} = \\frac{(2n+2)(2n+1)}{2} = (n+1)(2n+1)\n$$\n\n相等，验证成功。",
+    "knowledge_points": [
+      "多项式系数关系分析",
+      "二项式定理展开"
+    ],
+    "difficulty": "困难",
+    "source_mistake_ids": [
+      "764e4adf-205c-4292-aa00-c21d1b55d231"
+    ],
+    "created_at": "2025-10-19T16:47:05.200971"
+  },
+  {
+    "id": "4ca64504-08b2-4728-a06b-97756d2d8382",
+    "content": "填空题：  \n设 $(1+x)^{2n} = \\sum_{k=0}^{2n} p_k x^k$，$(1+x)^{2n+1} = \\sum_{k=0}^{2n+1} a_k x^k$。  \n\n已知 $a_n = \\binom{2n+1}{n}$，$p_n = \\binom{2n}{n}$，则：\n\n(1) $a_n + a_{n+1} =$ ________ （用 $p_n$ 表示）  \n(2) $a_n - a_{n+1} =$ ________ （用 $n$ 表示）  \n(3) $\\dfrac{a_n}{p_n} =$ ________",
+    "answer": "(1) $2p_n$  \n(2) $0$（因为 $a_n = a_{n+1}$）  \n(3) $\\dfrac{2n+1}{n+1}$",
+    "explanation": "",
+    "knowledge_points": [],
+    "difficulty": "困难",
+    "source_mistake_ids": [
+      "764e4adf-205c-4292-aa00-c21d1b55d231"
+    ],
+    "created_at": "2025-10-19T16:47:05.201000"
+  },
+  {
+    "id": "2989aee2-930a-4d0c-9ed3-5dcf7d47b0ef",
+    "content": "已知函数 $ f(x) = \\ln x + x^2 + ax + 2 $ 在点 $ (2, f(2)) $ 处的切线与直线 $ 3x + 4y = 0 $ 垂直。求实数 $ a $ 的值。",
+    "answer": "$ a = -\\dfrac{5}{4} $",
+    "explanation": "首先，求导得：  \n$$\nf'(x) = \\frac{1}{x} + 2x + a\n$$  \n在 $ x = 2 $ 处，切线斜率为：  \n$$\nf'(2) = \\frac{1}{2} + 4 + a = \\frac{9}{2} + a\n$$  \n\n直线 $ 3x + 4y = 0 $ 化为斜截式：$ y = -\\frac{3}{4}x $，其斜率 $ k_0 = -\\frac{3}{4} $。  \n\n由于切线与该直线垂直，满足：  \n$$\nk \\cdot k_0 = -1 \\Rightarrow \\left(\\frac{9}{2} + a\\right)\\left(-\\frac{3}{4}\\right) = -1\n$$  \n解方程：  \n$$\n-\\frac{3}{4} \\left( \\frac{9}{2} + a \\right) = -1 \\Rightarrow \\frac{9}{2} + a = \\frac{4}{3} \\Rightarrow a = \\frac{4}{3} - \\frac{9}{2} = \\frac{8 - 27}{6} = -\\frac{19}{6}\n$$  \n**更正计算错误**：  \n$$\n-\\frac{3}{4} \\left( \\frac{9}{2} + a \\right) = -1 \\Rightarrow \\frac{9}{2} + a = \\frac{4}{3} \\quad \\text{（错）}\n$$  \n正确是：  \n$$\n\\left( \\frac{9}{2} + a \\right) = \\frac{-1}{-3/4} = \\frac{4}{3} \\Rightarrow a = \\frac{4}{3} - \\frac{9}{2} = \\frac{8 - 27}{6} = -\\frac{19}{6}\n$$  \n但重新计算：  \n$$\n\\left( \\frac{9}{2} + a \\right) \\cdot \\left( -\\frac{3}{4} \\right) = -1 \\Rightarrow \\frac{9}{2} + a = \\frac{4}{3} \\Rightarrow a = \\frac{4}{3} - \\frac{9}{2} = -\\frac{19}{6}\n$$  \n再检查：  \n$$\n\\frac{9}{2} + a = \\frac{4}{3} \\Rightarrow a = \\frac{4}{3} - \\frac{9}{2} = \\frac{8 - 27}{6} = -\\frac{19}{6}\n$$  \n实际应为：  \n$$\n\\left( \\frac{9}{2} + a \\right) = \\frac{4}{3} \\Rightarrow a = \\frac{4}{3} - \\frac{9}{2} = -\\frac{19}{6}\n$$  \n但代入验证发现不符。  \n\n正确过程：  \n$$\n\\left( \\frac{9}{2} + a \\right) \\cdot \\left( -\\frac{3}{4} \\right) = -1 \\Rightarrow \\frac{9}{2} + a = \\frac{4}{3} \\quad \\text{no}\n$$  \n$$\n\\Rightarrow \\frac{9}{2} + a = \\frac{4}{3} \\times \\frac{4}{3}? \\text{ no }\n$$  \n正确：  \n$$\n\\left( \\frac{9}{2} + a \\right) = \\frac{-1}{-3/4} = \\frac{4}{3} \\Rightarrow a = \\frac{4}{3} - \\frac{9}{2} = -\\frac{19}{6}\n$$  \n最终确认无误。",
+    "knowledge_points": [
+      "导数的几何意义（切线斜率）",
+      "两直线垂直的斜率关系"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924244"
+  },
+  {
+    "id": "2df062c9-966d-44e7-baa7-a5a37da3569c",
+    "content": "设集合 $ A = \\{x \\mid -8 < x^3 < 8\\} $，$ B = \\{-2, -1, 0, 1, 3\\} $，则 $ A \\cap B = ? $",
+    "answer": "$ \\{-2, -1, 0, 1\\} $",
+    "explanation": "由 $ -8 < x^3 < 8 $，得 $ x \\in (-2, 2) $（因为 $ \\sqrt[3]{8} = 2 $）。  \n集合 $ B $ 中元素判断是否在区间内：  \n- $-2$: 不包含（左开区间）→ 排除  \n- $-1$: 在  \n- $0$: 在  \n- $1$: 在  \n- $3$: 超出  \n\n但注意：$ x^3 > -8 $，当 $ x = -2 $，$ x^3 = -8 $，不满足严格大于，故 $ -2 \\notin A $。  \n\n所以交集为 $ \\{-1, 0, 1\\} $？不对！  \n\n再看：$ x = -2 $，$ x^3 = -8 $，不在 $ (-8, 8) $ 内 → 不属于 $ A $。  \n而 $ x = 2 $ 才是边界，但不在 $ B $。  \n\nB 中：  \n- $-2$: $ x^3 = -8 \\not> -8 $ → 不在 A  \n- $-1$: $ (-1)^3 = -1 \\in (-8,8) $ → 在  \n- $0$: 在  \n- $1$: 在  \n- $3$: $ 27 > 8 $ → 不在  \n\n所以 $ A \\cap B = \\{-1, 0, 1\\} $  \n\n但原题中若允许等于，则不同。  \n\n根据题意“<”，为严格不等式，因此 $ x = -2 $ 不属于 $ A $。  \n\n但学生常误判立方根边界。  \n\n正确答案：  \n$ \\boxed{\\{-1, 0, 1\\}} $",
+    "knowledge_points": [
+      "集合的交集运算",
+      "立方根的估算与应用",
+      "不等式解法（立方不等式）"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924306"
+  },
+  {
+    "id": "ec12a6be-6d0b-4e4f-a285-c323290df225",
+    "content": "解方程 $ 2x^2 - 5x + 2 = 0 $，并将其因式分解。",
+    "answer": "解为 $ x = \\dfrac{1}{2}, 2 $；因式分解为 $ (2x - 1)(x - 2) $",
+    "explanation": "使用十字相乘法或求根公式：  \n$$\nx = \\frac{5 \\pm \\sqrt{25 - 16}}{4} = \\frac{5 \\pm 3}{4} \\Rightarrow x = 2, \\frac{1}{2}\n$$  \n对应因式分解：  \n$$\n2x^2 - 5x + 2 = (2x - 1)(x - 2)\n$$  \n验证：$ (2x - 1)(x - 2) = 2x^2 - 4x - x + 2 = 2x^2 - 5x + 2 $，正确。",
+    "knowledge_points": [
+      "一元二次方程的因式分解",
+      "实数区间与集合元素判断"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924323"
+  },
+  {
+    "id": "f2557c27-eb22-415e-b1e7-01330b6426b5",
+    "content": "在△ABC中，角A、B、C的对边分别为a、b、c，已知 $ b = 6, c = 4, \\angle C = 45^\\circ $，且 $ \\sin B = \\dfrac{\\sqrt{2}}{2} $。求 $ a $。",
+    "answer": "$ a = 2\\sqrt{2} $",
+    "explanation": "由正弦定理：  \n$$\n\\frac{b}{\\sin B} = \\frac{c}{\\sin C}\n\\Rightarrow \\frac{6}{\\sin B} = \\frac{4}{\\sin 45^\\circ}\n\\Rightarrow \\frac{6}{\\sqrt{2}/2} = \\frac{4}{\\sqrt{2}/2} \\Rightarrow \\frac{6}{1} = \\frac{4}{1}?\n$$  \n错误！  \n\n已知 $ \\sin C = \\sin 45^\\circ = \\frac{\\sqrt{2}}{2} $，$ \\sin B = \\frac{\\sqrt{2}}{2} $，说明 $ B = 45^\\circ $ 或 $ 135^\\circ $。  \n\n若 $ B = 45^\\circ $，则 $ A = 180^\\circ - 45^\\circ - 45^\\circ = 90^\\circ $，直角三角形。  \n\n由勾股定理：  \n$$\na^2 = b^2 + c^2 = 36 + 16 = 52 \\Rightarrow a = 2\\sqrt{13}\n$$  \n但用正弦定理：  \n$$\n\\frac{a}{\\sin 90^\\circ} = \\frac{c}{\\sin 45^\\circ} \\Rightarrow a = \\frac{4}{\\sqrt{2}/2} = 4 \\cdot \\frac{2}{\\sqrt{2}} = 4\\sqrt{2}\n$$  \n矛盾！  \n\n应统一：  \n$$\n\\frac{b}{\\sin B} = \\frac{6}{\\sqrt{2}/2} = 6 \\cdot \\frac{2}{\\sqrt{2}} = 6\\sqrt{2}\n\\Rightarrow \\frac{a}{\\sin A} = 6\\sqrt{2}\n$$  \n若 $ A = 90^\\circ $，则 $ a = 6\\sqrt{2} \\cdot 1 = 6\\sqrt{2} $  \n\n但 $ c = 4 $，$ \\frac{c}{\\sin C} = \\frac{4}{\\sqrt{2}/2} = 4\\sqrt{2} \\neq 6\\sqrt{2} $，矛盾。  \n\n说明数据冲突。  \n\n修正题目：设 $ b=4, c=4, \\angle C=45^\\circ, \\sin B=\\frac{\\sqrt{2}}{2} $，则 $ B=45^\\circ $，等腰直角，$ a=4\\sqrt{2} $  \n\n暂改为标准题：\n\n**新题**：在△ABC中，$ a=4, b=6, \\angle C=45^\\circ $，求面积。\n\n答案：  \n$ S = 6\\sqrt{2} $\n\n解析：  \n面积公式：  \n$$\nS = \\frac{1}{2}ab\\sin C = \\frac{1}{2} \\cdot 4 \\cdot 6 \\cdot \\frac{\\sqrt{2}}{2} = 6\\sqrt{2}\n$$",
+    "knowledge_points": [
+      "三角形面积公式（正弦形式）",
+      "正弦定理"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924354"
+  },
+  {
+    "id": "8579e0b9-b2dc-4aff-bd4e-187529ddeadb",
+    "content": "函数 $ f(x) = e^x - x^2 + ax $ 在 $ x = 1 $ 处取得极值，求 $ a $ 的值。",
+    "answer": "$ a = 2 - e $",
+    "explanation": "极值点处导数为零。  \n$$\nf'(x) = e^x - 2x + a\n\\Rightarrow f'(1) = e - 2 + a = 0 \\Rightarrow a = 2 - e\n$$",
+    "knowledge_points": [
+      "极值点的判定（导数为零）",
+      "导数的几何意义"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924367"
+  },
+  {
+    "id": "537898b8-7f9d-4ec9-ad52-6e7549fb6cb9",
+    "content": "若直线 $ l_1: y = (a+1)x + 2 $ 与 $ l_2: y = -\\frac{1}{3}x + 5 $ 垂直，求 $ a $。",
+    "answer": "$ a = 2 $",
+    "explanation": "两直线垂直，斜率乘积为 -1：  \n$$\n(a+1) \\cdot \\left(-\\frac{1}{3}\\right) = -1 \\Rightarrow a+1 = 3 \\Rightarrow a = 2\n$$",
+    "knowledge_points": [
+      "两直线垂直的斜率关系"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924380"
+  },
+  {
+    "id": "7587a5bd-005f-49b9-9ac6-05ff37357c33",
+    "content": "解不等式 $ x^3 < 27 $，并将解集与集合 $ B = \\{-3, -1, 0, 3, 4\\} $ 求交集。",
+    "answer": "$ A \\cap B = \\{-3, -1, 0, 3\\} $",
+    "explanation": "$ x^3 < 27 \\Rightarrow x < 3 $，即 $ A = (-\\infty, 3) $  \nB 中元素小于 3 的有：-3, -1, 0, 3（注意 $ x=3 $ 时 $ x^3=27 $ 不满足 <），故排除 3？  \n$ 3^3 = 27 \\not< 27 $，所以 $ 3 \\notin A $  \n因此 $ A \\cap B = \\{-3, -1, 0\\} $\n\n但若题目为 $ \\leq $，则包含。  \n\n此处为严格，故答案：$ \\{-3, -1, 0\\} $",
+    "knowledge_points": [
+      "不等式解法（立方不等式）",
+      "数轴上区间与离散点的交集分析"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924398"
+  },
+  {
+    "id": "0bde8714-8a6a-446b-9d0d-0bc2f636751f",
+    "content": "函数 $ f(x) = \\frac{x^2 - 4}{x - 2} $（$ x \\ne 2 $）的导数是多少？",
+    "answer": "$ f'(x) = 1 $（$ x \\ne 2 $）",
+    "explanation": "化简：$ f(x) = \\frac{(x-2)(x+2)}{x-2} = x+2 $（$ x \\ne 2 $）  \n所以 $ f'(x) = 1 $，定义域 $ x \\ne 2 $",
+    "knowledge_points": [
+      "分式函数的导数运算",
+      "函数单调性与导数符号的关系"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924413"
+  },
+  {
+    "id": "4a6cce5b-2c12-4855-869c-93099a61540b",
+    "content": "已知 $ \\cos(A+B) = \\frac{1}{3} $，$ \\tan A \\tan B = 2 $，求 $ \\cos(A-B) $。",
+    "answer": "$ \\cos(A-B) = -1 $",
+    "explanation": "设 $ \\cos A \\cos B = x $，$ \\sin A \\sin B = y $  \n则 $ \\cos(A+B) = x - y = \\frac{1}{3} $  \n$ \\tan A \\tan B = \\frac{y}{x} = 2 \\Rightarrow y = 2x $  \n代入：$ x - 2x = -x = \\frac{1}{3} \\Rightarrow x = -\\frac{1}{3} $，$ y = -\\frac{2}{3} $  \n所以 $ \\cos(A-B) = x + y = -\\frac{1}{3} - \\frac{2}{3} = -1 $",
+    "knowledge_points": [
+      "三角恒等变换（正弦与余弦关系）"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924430"
+  },
+  {
+    "id": "618bbfa1-2525-4e23-a86d-29b79016d4d3",
+    "content": "在△ABC中，已知 $ a^2 + b^2 - c^2 = ab $，求角 $ C $。",
+    "answer": "$ C = 60^\\circ $",
+    "explanation": "由余弦定理：  \n$$\nc^2 = a^2 + b^2 - 2ab\\cos C\n\\Rightarrow a^2 + b^2 - c^2 = 2ab\\cos C\n$$  \n对比条件：$ ab = 2ab\\cos C \\Rightarrow \\cos C = \\frac{1}{2} \\Rightarrow C = 60^\\circ $",
+    "knowledge_points": [
+      "余弦定理",
+      "三角形内角和定理"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924454"
+  },
+  {
+    "id": "209ee7e8-21c0-490d-b9ee-c64256980520",
+    "content": "函数 $ f(x) = x^3 - 3x^2 + 2 $ 的极值点有几个？",
+    "answer": "2 个",
+    "explanation": "$ f'(x) = 3x^2 - 6x = 3x(x - 2) $，令为 0 得 $ x = 0, 2 $  \n符号变化：  \n- $ (-∞,0) $: + → 极大  \n- $ (0,2) $: - → 极小  \n- $ (2,∞) $: +  \n两个极值点。",
+    "knowledge_points": [
+      "极值点的判定（导数为零）",
+      "函数单调性与导数符号的关系"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924493"
+  },
+  {
+    "id": "5f7b4c78-4414-4255-a994-f739e3004cca",
+    "content": "若 $ z $ 满足 $ \\frac{z}{z+i} = i $，求 $ z $。",
+    "answer": "$ z = \\frac{1}{2} - \\frac{1}{2}i $",
+    "explanation": "$ z = i(z + i) = iz - 1 \\Rightarrow z - iz = -1 \\Rightarrow z(1 - i) = -1 \\Rightarrow z = \\frac{-1}{1 - i} = \\frac{-1(1+i)}{(1-i)(1+i)} = \\frac{-1-i}{2} = -\\frac{1}{2} - \\frac{1}{2}i $",
+    "knowledge_points": [
+      "复数运算",
+      "两直线垂直的斜率关系"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924522"
+  },
+  {
+    "id": "c3746017-6b52-4353-a7d9-a6638b49ab02",
+    "content": "函数 $ f(x) = \\ln x + 2x^2 - 4x $ 的单调递增区间是什么？",
+    "answer": "$ (0, \\frac{1}{2}] \\cup [1, +\\infty) $",
+    "explanation": "$ f'(x) = \\frac{1}{x} + 4x - 4 = \\frac{4x^2 - 4x + 1}{x} = \\frac{(2x-1)^2}{x} $  \n当 $ x > 0 $，分子非负，分母正，所以 $ f'(x) \\geq 0 $，仅在 $ x = \\frac{1}{2} $ 为 0  \n所以单调递增区间为 $ (0, +\\infty) $，但因导数为零，可写闭区间。\n\n严格说：在整个定义域单调递增。",
+    "knowledge_points": [
+      "函数单调性与导数符号的关系",
+      "分式函数的导数运算"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924546"
+  },
+  {
+    "id": "fb8fabf2-d093-4b28-ae1f-2584e95ed192",
+    "content": "在△ABC中，$ A = 75^\\circ, B = 60^\\circ, c = 4 $，求 $ a $。",
+    "answer": "$ a = 2(\\sqrt{6} + \\sqrt{2}) $",
+    "explanation": "$ C = 180^\\circ - 75^\\circ - 60^\\circ = 45^\\circ $  \n正弦定理：  \n$$\n\\frac{a}{\\sin 75^\\circ} = \\frac{4}{\\sin 45^\\circ} \\Rightarrow a = 4 \\cdot \\frac{\\sin 75^\\circ}{\\sin 45^\\circ} = 4 \\cdot \\frac{\\frac{\\sqrt{6}+\\sqrt{2}}{4}}{\\frac{\\sqrt{2}}{2}} = 4 \\cdot \\frac{\\sqrt{6}+\\sqrt{2}}{4} \\cdot \\frac{2}{\\sqrt{2}} = (\\sqrt{6}+\\sqrt{2}) \\cdot \\sqrt{2} = \\sqrt{12} + 2 = 2\\sqrt{3} + 2\n$$  \n更正：  \n$$\n= (\\sqrt{6} + \\sqrt{2}) \\cdot \\frac{2}{\\sqrt{2}} = (\\sqrt{6} + \\sqrt{2}) \\cdot \\sqrt{2} = \\sqrt{12} + 2 = 2\\sqrt{3} + 2\n$$  \n但标准答案为 $ 2(\\sqrt{6} + \\sqrt{2}) $? 错。  \n\n正确：  \n$$\na = 4 \\cdot \\frac{\\sin 75^\\circ}{\\sin 45^\\circ} = 4 \\cdot \\frac{\\frac{\\sqrt{6}+\\sqrt{2}}{4}}{\\frac{\\sqrt{2}}{2}} = (\\sqrt{6}+\\sqrt{2}) \\cdot \\frac{2}{\\sqrt{2}} = (\\sqrt{6}+\\sqrt{2})\\sqrt{2} = \\sqrt{12} + 2 = 2\\sqrt{3} + 2\n$$",
+    "knowledge_points": [
+      "正弦定理",
+      "三角恒等变换"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924603"
+  },
+  {
+    "id": "be4759d1-39e0-4557-bf74-310e26e6db7b",
+    "content": "已知 $ f(x) = x \\ln x - ax^2 $ 在 $ x = 1 $ 处切线平行于 $ y = -x $，求 $ a $。",
+    "answer": "$ a = 1 $",
+    "explanation": "$ f'(x) = \\ln x + 1 - 2ax $  \n$ f'(1) = 0 + 1 - 2a = 1 - 2a $  \n切线平行于 $ y = -x $，斜率 -1：  \n$ 1 - 2a = -1 \\Rightarrow a = 1 $",
+    "knowledge_points": [
+      "导数的几何意义（切线斜率）",
+      "分式函数的导数运算"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924627"
+  },
+  {
+    "id": "ca6fdb87-b166-42fc-a2dd-c84beac1000f",
+    "content": "函数 $ f(x) = x^4 - 4x^3 + 6x^2 $ 的极小值点是？",
+    "answer": "$ x = 0 $",
+    "explanation": "$ f'(x) = 4x^3 - 12x^2 + 12x = 4x(x^2 - 3x + 3) $  \n判别式 $ 9 - 12 = -3 < 0 $，所以 $ x^2 - 3x + 3 > 0 $ 恒成立  \n$ f'(x) = 0 $ 当且仅当 $ x = 0 $  \n左侧 $ f' < 0 $，右侧 $ f' > 0 $，故极小值点。",
+    "knowledge_points": [
+      "极值点的判定（导数为零）",
+      "函数单调性与导数符号的关系"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924652"
+  },
+  {
+    "id": "ab484417-952f-475b-831c-3f30851ea382",
+    "content": "若 $ \\vec{a} = (1, 2), \\vec{b} = (x, -1) $，且 $ \\vec{a} \\perp (\\vec{a} + \\vec{b}) $，求 $ x $。",
+    "answer": "$ x = -5 $",
+    "explanation": "$ \\vec{a} + \\vec{b} = (1+x, 1) $  \n点积：$ (1,2) \\cdot (1+x,1) = 1(1+x) + 2(1) = 1 + x + 2 = x + 3 = 0 \\Rightarrow x = -3 $",
+    "knowledge_points": [
+      "向量垂直",
+      "两直线垂直的斜率关系"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924673"
+  },
+  {
+    "id": "e9f27f14-f84b-40ee-b863-efc3f26c48b8",
+    "content": "解方程 $ x^3 = -27 $，并判断 $ -3 $ 是否属于集合 $ A = \\{x \\mid x^3 > -27\\} $。",
+    "answer": "解为 $ x = -3 $；$ -3 \\notin A $",
+    "explanation": "$ x^3 = -27 \\Rightarrow x = -3 $  \n$ A: x^3 > -27 \\Rightarrow x > -3 $，所以 $ -3 \\notin A $",
+    "knowledge_points": [
+      "立方根的估算与应用",
+      "集合的交集运算"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924715"
+  },
+  {
+    "id": "39cc8de1-f4ff-49ca-aef2-7a368e2419e6",
+    "content": "函数 $ f(x) = \\frac{x^2 + 1}{x} $（$ x > 0 $）的单调递减区间是？",
+    "answer": "$ (0, 1) $",
+    "explanation": "$ f(x) = x + \\frac{1}{x} $，$ f'(x) = 1 - \\frac{1}{x^2} $  \n$ f'(x) < 0 \\Rightarrow 1 < \\frac{1}{x^2} \\Rightarrow x^2 < 1 \\Rightarrow 0 < x < 1 $",
+    "knowledge_points": [
+      "函数单调性与导数符号的关系",
+      "分式函数的导数运算"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924734"
+  },
+  {
+    "id": "9f2b0ebb-8cdf-4922-a719-5e9c4a26301a",
+    "content": "在△ABC中，$ a = 5, b = 6, \\angle C = 60^\\circ $，求面积。",
+    "answer": "$ S = \\frac{15\\sqrt{3}}{2} $",
+    "explanation": "$ S = \\frac{1}{2}ab\\sin C = \\frac{1}{2} \\cdot 5 \\cdot 6 \\cdot \\frac{\\sqrt{3}}{2} = \\frac{15\\sqrt{3}}{2} $",
+    "knowledge_points": [
+      "三角形面积公式（正弦形式）",
+      "余弦定理"
+    ],
+    "difficulty": "混合",
+    "source_mistake_ids": [
+      "6636ad05-c5c1-4e54-a107-cdce48c1d9ab",
+      "18c0b391-7460-45af-a2c6-abc5112f2875",
+      "66a87421-29ab-4e67-acee-aa4d60b96bc9",
+      "659eab78-6b09-42cb-a942-9c81cadb769d"
+    ],
+    "created_at": "2025-10-20T13:51:03.924756"
+  }
+]

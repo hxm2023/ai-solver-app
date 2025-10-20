@@ -166,3 +166,12 @@ websocket-client==1.8.0
 websockets==15.0.1
 xxhash==3.5.0
 yarl==1.20.1
+
+# ==============================================================================
+# Feature 1-4: 个性化学习系统依赖 (V23.0)
+# ==============================================================================
+sqlalchemy==2.0.23
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+reportlab==4.0.7  # Feature 4: PDF生成
+python-docx==1.1.0  # Feature 4: Word文档生成（备选）
