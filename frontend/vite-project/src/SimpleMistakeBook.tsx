@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { marked } from 'marked';
+import QuestionItem from './components/QuestionItem';
 
 const API_BASE_URL = 'http://127.0.0.1:8000';
 
@@ -22,6 +23,7 @@ interface Mistake {
   wrong_answer: string;
   ai_analysis: string;
   subject: string;
+  grade: string;  // 【V25.0新增】年级
   knowledge_points: string[];
   created_at: string;
   reviewed_count: number;
@@ -47,16 +49,25 @@ const SimpleMistakeBook: React.FC = () => {
   const [paperConfig, setPaperConfig] = useState({
     count: 5,
     difficulty: '中等',
-    questionType: '选择题'
+    questionType: '选择题',
+    allowWebSearch: false  // 【V25.0新增】网络辅助出题
   });
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<any>(null);
   const [allKnowledgePoints, setAllKnowledgePoints] = useState<string[]>([]);
+  // 【V25.0新增】筛选条件
+  const [filterSubject, setFilterSubject] = useState<string>('');
+  const [filterGrade, setFilterGrade] = useState<string>('');
 
-  // 加载错题列表
+  // 【V25.0增强】加载错题列表（支持筛选）
   const loadMistakes = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/mistakes/`);
+      // 构建查询参数
+      const params: any = {};
+      if (filterSubject) params.subject = filterSubject;
+      if (filterGrade) params.grade = filterGrade;
+      
+      const response = await axios.get(`${API_BASE_URL}/mistakes/`, { params });
       const mistakesList = response.data.items || [];
       setMistakes(mistakesList);
       
@@ -139,7 +150,8 @@ const SimpleMistakeBook: React.FC = () => {
       const response = await axios.post(`${API_BASE_URL}/questions/generate`, {
         mistake_ids: Array.from(selectedMistakes),
         count: 3,
-        difficulty: '中等'
+        difficulty: '中等',
+        allow_web_search: false  // 简单模式默认不开启网络搜索
       }, {
         timeout: 300000  // 延长5倍到300秒（5分钟）
       });
@@ -190,12 +202,13 @@ const SimpleMistakeBook: React.FC = () => {
       const response = await axios.post(`${API_BASE_URL}/questions/generate`, {
         mistake_ids: targetMistakeIds,
         count: paperConfig.count,
-        difficulty: paperConfig.difficulty
+        difficulty: paperConfig.difficulty,
+        allow_web_search: paperConfig.allowWebSearch  // 【V25.0】传递网络搜索设置
       }, {
         timeout: 600000  // 延长5倍到600秒（10分钟），适应大量题目生成
       });
       
-      alert(`成功生成${response.data.questions.length}道题目！`);
+      alert(`成功生成${response.data.questions.length}道题目！${paperConfig.allowWebSearch ? '（已使用网络辅助）' : ''}`);
       setSelectedMistakes(new Set());
       setSelectedKnowledgePoints(new Set());
       await loadQuestions();
@@ -269,17 +282,12 @@ const SimpleMistakeBook: React.FC = () => {
     loadStats();
   }, []);
 
-  // 【新增】触发MathJax渲染
+  // 【V25.0新增】当筛选条件变化时重新加载
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (window.MathJax && window.MathJax.typesetPromise) {
-        window.MathJax.typesetPromise().catch((err: any) => {
-          console.warn('MathJax渲染失败:', err);
-        });
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [questions, mistakes, activeTab]);
+    loadMistakes();
+  }, [filterSubject, filterGrade]);
+
+  // 【已优化】MathJax渲染现在由QuestionItem组件独立处理，无需全局渲染
 
   return (
     <div style={{ padding: '20px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -380,7 +388,7 @@ const SimpleMistakeBook: React.FC = () => {
       {/* 错题本标签页 */}
       {activeTab === 'mistakes' && (
         <div>
-          <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
             <h3>我的错题集</h3>
             <button
               onClick={loadMistakes}
@@ -396,6 +404,96 @@ const SimpleMistakeBook: React.FC = () => {
               🔄 刷新
             </button>
           </div>
+
+          {/* 【V25.0新增】筛选器 */}
+          {stats && (stats.subjects || stats.grades) && (
+            <div style={{
+              marginBottom: '20px',
+              padding: '15px',
+              background: '#f5f5f5',
+              borderRadius: '10px'
+            }}>
+              <h4 style={{ marginBottom: '10px', fontSize: '14px', color: '#666' }}>📊 筛选条件</h4>
+              <div style={{ display: 'flex', gap: '15px', flexWrap: 'wrap' }}>
+                {/* 学科筛选 */}
+                {stats.subjects && Object.keys(stats.subjects).length > 0 && (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', fontWeight: 'bold' }}>
+                      学科
+                    </label>
+                    <select
+                      value={filterSubject}
+                      onChange={(e) => setFilterSubject(e.target.value)}
+                      style={{
+                        padding: '8px 12px',
+                        border: '1px solid #ddd',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        minWidth: '120px'
+                      }}
+                    >
+                      <option value="">全部学科</option>
+                      {Object.keys(stats.subjects).map(subject => (
+                        <option key={subject} value={subject}>
+                          {subject} ({stats.subjects[subject]})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* 年级筛选 */}
+                {stats.grades && Object.keys(stats.grades).length > 0 && (
+                  <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', fontWeight: 'bold' }}>
+                      年级
+                    </label>
+                    <select
+                      value={filterGrade}
+                      onChange={(e) => setFilterGrade(e.target.value)}
+                      style={{
+                        padding: '8px 12px',
+                        border: '1px solid #ddd',
+                        borderRadius: '6px',
+                        fontSize: '13px',
+                        minWidth: '120px'
+                      }}
+                    >
+                      <option value="">全部年级</option>
+                      {Object.keys(stats.grades).map(grade => (
+                        <option key={grade} value={grade}>
+                          {grade} ({stats.grades[grade]})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* 清除筛选 */}
+                {(filterSubject || filterGrade) && (
+                  <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                    <button
+                      onClick={() => {
+                        setFilterSubject('');
+                        setFilterGrade('');
+                      }}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#ff5252',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '13px'
+                      }}
+                    >
+                      清除筛选
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {mistakes.length === 0 ? (
             <div style={{
@@ -446,15 +544,28 @@ const SimpleMistakeBook: React.FC = () => {
                       justifyContent: 'space-between',
                       marginBottom: '10px'
                     }}>
-                      <span style={{
-                        background: '#5C6AC4',
-                        color: 'white',
-                        padding: '4px 12px',
-                        borderRadius: '12px',
-                        fontSize: '12px'
-                      }}>
-                        {mistake.subject}
-                      </span>
+                      <div style={{ display: 'flex', gap: '5px' }}>
+                        <span style={{
+                          background: '#5C6AC4',
+                          color: 'white',
+                          padding: '4px 12px',
+                          borderRadius: '12px',
+                          fontSize: '12px'
+                        }}>
+                          {mistake.subject}
+                        </span>
+                        {mistake.grade && mistake.grade !== '未分类' && (
+                          <span style={{
+                            background: '#FF9800',
+                            color: 'white',
+                            padding: '4px 12px',
+                            borderRadius: '12px',
+                            fontSize: '12px'
+                          }}>
+                            {mistake.grade}
+                          </span>
+                        )}
+                      </div>
                       <span style={{ fontSize: '12px', color: '#999' }}>
                         查看 {mistake.reviewed_count} 次
                       </span>
@@ -620,174 +731,23 @@ const SimpleMistakeBook: React.FC = () => {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               {questions.map((question, index) => (
-                <div
+                <QuestionItem
                   key={question.id}
-                  style={{
-                    border: selectedQuestions.has(question.id) ? '2px solid #5C6AC4' : '1px solid #ddd',
-                    borderRadius: '10px',
-                    padding: '20px',
-                    background: selectedQuestions.has(question.id) ? '#f5f7ff' : 'white',
-                    transition: 'all 0.2s'
+                  question={question}
+                  index={index}
+                  isSelected={selectedQuestions.has(question.id)}
+                  onToggleSelect={(id) => {
+                    const newSet = new Set(selectedQuestions);
+                    if (newSet.has(id)) {
+                      newSet.delete(id);
+                    } else {
+                      newSet.add(id);
+                    }
+                    setSelectedQuestions(newSet);
                   }}
-                >
-                  <div style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    marginBottom: '15px'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <input
-                        type="checkbox"
-                        checked={selectedQuestions.has(question.id)}
-                        onChange={(e) => {
-                          const newSet = new Set(selectedQuestions);
-                          if (e.target.checked) {
-                            newSet.add(question.id);
-                          } else {
-                            newSet.delete(question.id);
-                          }
-                          setSelectedQuestions(newSet);
-                        }}
-                        style={{
-                          width: '18px',
-                          height: '18px',
-                          cursor: 'pointer'
-                        }}
-                      />
-                      <h4 style={{ margin: 0 }}>题目 {index + 1}</h4>
-                    </div>
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                      <span style={{
-                        background: '#FFC107',
-                        color: 'white',
-                        padding: '4px 12px',
-                        borderRadius: '12px',
-                        fontSize: '12px'
-                      }}>
-                        {question.difficulty}
-                      </span>
-                      <button
-                        onClick={() => exportPDF([question.id])}
-                        style={{
-                          padding: '4px 12px',
-                          background: '#4CAF50',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '5px',
-                          cursor: 'pointer',
-                          fontSize: '12px'
-                        }}
-                      >
-                        📥 PDF
-                      </button>
-                      <button
-                        onClick={() => deleteQuestion(question.id)}
-                        style={{
-                          padding: '4px 12px',
-                          background: '#f44336',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '5px',
-                          cursor: 'pointer',
-                          fontSize: '12px'
-                        }}
-                      >
-                        🗑️ 删除
-                      </button>
-                    </div>
-                  </div>
-
-                  <div style={{
-                    background: '#f9f9f9',
-                    padding: '15px',
-                    borderRadius: '8px',
-                    marginBottom: '15px',
-                    whiteSpace: 'pre-wrap',
-                    lineHeight: '1.8'
-                  }} 
-                  className="math-content"
-                  dangerouslySetInnerHTML={{ 
-                    __html: (() => {
-                      try {
-                        return marked.parse(question.content) as string;
-                      } catch (err) {
-                        console.error('题目内容Markdown解析失败:', err);
-                        return question.content.replace(/\n/g, '<br/>');
-                      }
-                    })()
-                  }}
-                  />
-                  
-
-                  <div style={{ marginBottom: '10px' }}>
-                    <strong style={{ color: '#4CAF50' }}>答案：</strong>
-                    <span 
-                      style={{ marginLeft: '10px' }} 
-                      className="math-content"
-                      dangerouslySetInnerHTML={{ 
-                        __html: (() => {
-                          try {
-                            return marked.parse(question.answer) as string;
-                          } catch (err) {
-                            console.error('答案Markdown解析失败:', err);
-                            return question.answer.replace(/\n/g, '<br/>');
-                          }
-                        })()
-                      }}
-                    />
-                  </div>
-
-                  {question.explanation && (
-                    <div style={{ marginBottom: '10px' }}>
-                      <strong style={{ color: '#FF9800' }}>解析：</strong>
-                      <div 
-                        className="math-content"
-                        style={{
-                          marginTop: '8px',
-                          padding: '12px',
-                          background: '#fff3e0',
-                          borderRadius: '6px',
-                          fontSize: '14px',
-                          whiteSpace: 'pre-wrap',
-                          lineHeight: '1.8'
-                        }}
-                        dangerouslySetInnerHTML={{ 
-                          __html: (() => {
-                            try {
-                              return marked.parse(question.explanation) as string;
-                            } catch (err) {
-                              console.error('解析Markdown解析失败:', err);
-                              return question.explanation.replace(/\n/g, '<br/>');
-                            }
-                          })()
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  {question.knowledge_points.length > 0 && (
-                    <div>
-                      <strong>知识点：</strong>
-                      {question.knowledge_points.map((kp, idx) => (
-                        <span
-                          key={idx}
-                          style={{
-                            display: 'inline-block',
-                            background: '#e3f2fd',
-                            padding: '4px 10px',
-                            borderRadius: '4px',
-                            fontSize: '12px',
-                            marginLeft: '8px',
-                            marginTop: '5px'
-                          }}
-                        >
-                          {kp}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                  onDelete={deleteQuestion}
+                  onExportPDF={exportPDF}
+                />
               ))}
             </div>
           )}
@@ -1054,6 +1014,51 @@ const SimpleMistakeBook: React.FC = () => {
                   <option value="混合题型">混合题型</option>
                 </select>
               </div>
+            </div>
+
+            {/* 【V25.0新增】网络辅助出题选项 */}
+            <div style={{
+              marginTop: '20px',
+              padding: '15px',
+              background: 'white',
+              borderRadius: '8px',
+              border: paperConfig.allowWebSearch ? '2px solid #4CAF50' : '1px solid #ddd'
+            }}>
+              <label style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                cursor: 'pointer',
+                fontSize: '14px'
+              }}>
+                <input
+                  type="checkbox"
+                  checked={paperConfig.allowWebSearch}
+                  onChange={(e) => setPaperConfig({...paperConfig, allowWebSearch: e.target.checked})}
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    cursor: 'pointer'
+                  }}
+                />
+                <span style={{ fontWeight: 'bold', color: paperConfig.allowWebSearch ? '#4CAF50' : '#333' }}>
+                  🌐 允许网络搜索辅助出题
+                </span>
+              </label>
+              <p style={{
+                fontSize: '12px',
+                color: '#666',
+                margin: '8px 0 0 28px',
+                lineHeight: '1.6'
+              }}>
+                {paperConfig.allowWebSearch ? (
+                  <span style={{ color: '#4CAF50' }}>
+                    ✓ AI将搜索相关题库网站作为参考，生成更真实、更高质量的题目
+                  </span>
+                ) : (
+                  '开启后，AI会搜索网络上的相关题目作为参考，提升题目质量和真实性'
+                )}
+              </p>
             </div>
           </div>
 

@@ -1,77 +1,58 @@
 @echo off
-chcp 65001 > nul
-title 安装依赖到虚拟环境
-echo.
+chcp 65001 >nul
 echo ========================================
-echo   安装Python依赖到虚拟环境
+echo   V25.0 依赖安装到虚拟环境
 echo ========================================
 echo.
 
-echo [步骤1] 进入后端目录...
-cd /d "%~dp0backend"
-if errorlevel 1 (
-    echo 错误：无法进入backend目录
+cd /d "%~dp0"
+
+echo [1/3] 检查虚拟环境...
+if not exist "backend\venv\Scripts\activate.bat" (
+    echo ❌ 虚拟环境不存在
+    echo 请先运行: python -m venv backend\venv
     pause
     exit /b 1
 )
-echo 当前目录：%CD%
+echo ✅ 虚拟环境存在
 echo.
 
-echo [步骤2] 激活虚拟环境...
-call venv\Scripts\activate.bat
-if errorlevel 1 (
-    echo 错误：无法激活虚拟环境
-    pause
-    exit /b 1
+echo [2/3] 激活虚拟环境...
+call backend\venv\Scripts\activate.bat
+echo ✅ 虚拟环境已激活
+echo.
+
+echo [3/3] 安装V25.0依赖...
+echo 这可能需要2-3分钟，请耐心等待...
+echo.
+
+cd backend
+pip install -r requirements.txt
+
+if %errorlevel% equ 0 (
+    echo.
+    echo ========================================
+    echo   ✅ 依赖安装成功！
+    echo ========================================
+    echo.
+    echo 已安装的V25.0新依赖：
+    echo   - pyppeteer (PDF导出)
+    echo   - markdown (Markdown转HTML)
+    echo   - beautifulsoup4 (网页爬取)
+    echo   - requests (HTTP请求)
+    echo.
+    echo 下一步：
+    echo 1. 重启后端服务
+    echo 2. 测试PDF导出功能
+    echo.
+) else (
+    echo.
+    echo ========================================
+    echo   ❌ 安装失败
+    echo ========================================
+    echo.
+    echo 请检查网络连接后重试
+    echo.
 )
-echo 虚拟环境已激活
-echo.
 
-echo [步骤3] 检查Python路径...
-python -c "import sys; print('Python路径:', sys.executable)"
-echo.
-
-echo [步骤4] 安装依赖包（这可能需要1-2分钟）...
-echo.
-echo 正在安装 sqlalchemy...
-pip install sqlalchemy
-echo.
-echo 正在安装 passlib...
-pip install "passlib[bcrypt]"
-echo.
-echo 正在安装 python-jose...
-pip install "python-jose[cryptography]"
-echo.
-echo 正在安装 python-multipart...
-pip install python-multipart
-echo.
-echo 正在安装 reportlab...
-pip install reportlab
-echo.
-echo 正在安装 python-docx...
-pip install python-docx
-echo.
-
-echo [步骤5] 验证安装...
-echo.
-echo 已安装的包：
-pip list | findstr /i "sqlalchemy passlib jose multipart reportlab docx"
-echo.
-
-echo ========================================
-echo   安装完成！
-echo ========================================
-echo.
-echo 请检查上方是否显示了以下包：
-echo   - sqlalchemy
-echo   - passlib
-echo   - python-jose
-echo   - python-multipart
-echo   - reportlab
-echo   - python-docx
-echo.
-echo 如果都显示了，说明安装成功！
-echo 请关闭后端服务窗口，然后重新启动。
-echo.
 pause
-

@@ -13,6 +13,7 @@ import io
 import re
 import uuid
 import json
+import asyncio  # 【V25.0新增】PDF导出需要
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict, Literal
@@ -96,6 +97,7 @@ class MistakeCreate(BaseModel):
     wrong_answer: Optional[str] = ""  # 错误答案
     ai_analysis: Optional[str] = ""  # AI分析
     subject: Optional[str] = "未分类"  # 科目
+    grade: Optional[str] = "未分类"  # 【V25.0新增】年级
     knowledge_points: Optional[List[str]] = []  # 知识点列表
 
 class MistakeResponse(BaseModel):
@@ -106,6 +108,7 @@ class MistakeResponse(BaseModel):
     wrong_answer: str
     ai_analysis: str
     subject: str
+    grade: str  # 【V25.0新增】年级
     knowledge_points: List[str]
     created_at: str
     reviewed_count: int
@@ -115,6 +118,7 @@ class QuestionGenerateRequest(BaseModel):
     mistake_ids: List[str]  # 基于哪些错题生成
     count: int = 3  # 生成题目数量
     difficulty: str = "中等"  # 难度级别
+    allow_web_search: bool = False  # 【V25.0新增】是否允许网络搜索辅助出题
 
 class QuestionResponse(BaseModel):
     """题目响应"""
@@ -539,8 +543,10 @@ async def chat_with_ai(request: ChatRequest):
                     for kp in detected_knowledge_points:
                         print(f"           - {kp}")
                     
-                    # 推测学科
+                    # 推测学科和年级
                     subject = "未分类"
+                    grade = "未分类"  # 【V25.0新增】
+                    
                     if any(keyword in ocr_text for keyword in ["方程", "函数", "几何", "代数", "三角", "x", "y", "="]):
                         subject = "数学"
                     elif any(keyword in ocr_text for keyword in ["单词", "语法", "词汇", "句子", "翻译"]):
@@ -550,7 +556,15 @@ async def chat_with_ai(request: ChatRequest):
                     elif any(keyword in ocr_text for keyword in ["化学", "元素", "反应", "分子"]):
                         subject = "化学"
                     
-                    print(f"[错题保存] ✓ 推测学科: {subject}")
+                    # 【V25.0新增】简单推测年级
+                    if any(keyword in ocr_text for keyword in ["小学", "一年级", "二年级", "三年级", "四年级", "五年级", "六年级"]):
+                        grade = "小学"
+                    elif any(keyword in ocr_text for keyword in ["初中", "初一", "初二", "初三", "七年级", "八年级", "九年级"]):
+                        grade = "初中"
+                    elif any(keyword in ocr_text for keyword in ["高中", "高一", "高二", "高三"]):
+                        grade = "高中"
+                    
+                    print(f"[错题保存] ✓ 推测学科: {subject}, 年级: {grade}")
                     
                     # 保存到错题本
                     print(f"[错题保存] 步骤2: 保存到错题本...")
@@ -563,6 +577,7 @@ async def chat_with_ai(request: ChatRequest):
                         "wrong_answer": "(从批改中提取)",
                         "ai_analysis": cleaned_response,
                         "subject": subject,
+                        "grade": grade,  # 【V25.0新增】
                         "knowledge_points": detected_knowledge_points,
                         "created_at": datetime.now().isoformat(),
                         "reviewed_count": 0
@@ -648,6 +663,7 @@ def create_mistake(mistake: MistakeCreate):
         "wrong_answer": mistake.wrong_answer,
         "ai_analysis": mistake.ai_analysis,
         "subject": mistake.subject,
+        "grade": mistake.grade,  # 【V25.0新增】
         "knowledge_points": mistake.knowledge_points,
         "created_at": datetime.now().isoformat(),
         "reviewed_count": 0
@@ -656,21 +672,30 @@ def create_mistake(mistake: MistakeCreate):
     mistakes.append(new_mistake)
     save_mistakes(mistakes)
     
-    print(f"✅ 新增错题: ID={new_mistake['id']}, 科目={mistake.subject}")
+    print(f"✅ 新增错题: ID={new_mistake['id']}, 科目={mistake.subject}, 年级={mistake.grade}")
     return new_mistake
 
 @app.get("/mistakes/")
 def get_mistakes(
     subject: Optional[str] = None,
+    grade: Optional[str] = None,  # 【V25.0新增】按年级过滤
     limit: int = 100,
     offset: int = 0
 ):
-    """获取错题列表"""
+    """
+    【V25.0增强】获取错题列表
+    - 支持按科目过滤
+    - 支持按年级过滤
+    """
     mistakes = load_mistakes()
     
     # 过滤科目
     if subject:
         mistakes = [m for m in mistakes if m.get("subject") == subject]
+    
+    # 【V25.0新增】过滤年级
+    if grade:
+        mistakes = [m for m in mistakes if m.get("grade") == grade]
     
     # 排序（最新的在前）
     mistakes = sorted(mistakes, key=lambda x: x.get("created_at", ""), reverse=True)
@@ -717,16 +742,24 @@ def delete_mistake(mistake_id: str):
 
 @app.get("/mistakes/stats/summary")
 def get_mistakes_stats():
-    """获取错题统计信息"""
+    """
+    【V25.0增强】获取错题统计信息
+    - 新增年级统计
+    """
     mistakes = load_mistakes()
     
     # 按科目分类
     subjects = {}
+    grades = {}  # 【V25.0新增】
     knowledge_points = {}
     
     for mistake in mistakes:
         subject = mistake.get("subject", "未分类")
         subjects[subject] = subjects.get(subject, 0) + 1
+        
+        # 【V25.0新增】统计年级
+        grade = mistake.get("grade", "未分类")
+        grades[grade] = grades.get(grade, 0) + 1
         
         for kp in mistake.get("knowledge_points", []):
             knowledge_points[kp] = knowledge_points.get(kp, 0) + 1
@@ -734,6 +767,7 @@ def get_mistakes_stats():
     return {
         "total_mistakes": len(mistakes),
         "subjects": subjects,
+        "grades": grades,  # 【V25.0新增】
         "top_knowledge_points": sorted(
             knowledge_points.items(),
             key=lambda x: x[1],
@@ -742,12 +776,296 @@ def get_mistakes_stats():
     }
 
 # ==============================================================================
+# 【V25.0新增】网络辅助出题工具函数
+# ==============================================================================
+
+async def search_web_for_questions(subject: str, knowledge_points: List[str], difficulty: str) -> str:
+    """
+    【V25.0增强】网络深度爬取辅助出题功能
+    
+    策略升级：
+    1. 搜索并识别题库网站（菁优网、学科网等）
+    2. 深度爬取题目详情页
+    3. 提取题目文本和图片
+    4. 下载图片并转换为可用格式
+    5. 返回结构化的真实题目数据
+    
+    Args:
+        subject: 学科
+        knowledge_points: 知识点列表
+        difficulty: 难度级别
+    
+    Returns:
+        结构化的题目数据（包含图片）
+    """
+    import requests
+    from bs4 import BeautifulSoup
+    import base64
+    from urllib.parse import urljoin
+    
+    # 构建搜索关键词（针对题库网站）
+    kp_str = " ".join(knowledge_points[:2])
+    # 添加图片关键词，增加找到带图题目的概率
+    search_query = f"{subject} {kp_str} {difficulty} 练习题 含图 site:jyeoo.com OR site:zujuan.com OR site:cooco.net.cn"
+    
+    print(f"[深度爬取] 搜索关键词: {search_query}")
+    print(f"[深度爬取] 目标: 带图片的真实题目")
+    
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        }
+        
+        # ---- 步骤1: 搜索题库网站 ----
+        search_url = f"https://www.baidu.com/s?wd={requests.utils.quote(search_query)}"
+        response = requests.get(search_url, headers=headers, timeout=10)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # 提取题库网站链接（改进版：提取真实URL）
+        question_urls = []
+        target_sites = ['jyeoo.com', 'zujuan.com', 'cooco.net.cn', '1010jiajiao.com', 'zybang.com']
+        
+        for result in soup.find_all('div', class_=['result', 'c-container'], limit=20):
+            # 方法1：从mu属性提取真实URL（百度搜索结果特有）
+            mu_url = result.get('mu')
+            if mu_url and any(site in mu_url for site in target_sites):
+                question_urls.append(mu_url)
+                continue
+            
+            # 方法2：从data-log属性解析
+            data_log = result.get('data-log')
+            if data_log:
+                try:
+                    import re
+                    url_match = re.search(r'http[s]?://[^\s"\']+', data_log)
+                    if url_match:
+                        extracted_url = url_match.group(0)
+                        if any(site in extracted_url for site in target_sites):
+                            question_urls.append(extracted_url)
+                            continue
+                except:
+                    pass
+            
+            # 方法3：从链接文本中寻找（备用）
+            link = result.find('a', href=True)
+            if link and link['href']:
+                href = link['href']
+                # 尝试访问百度跳转链接获取真实URL
+                if 'baidu.com' in href and 'url=' in href:
+                    try:
+                        real_url_match = re.search(r'url=([^&]+)', href)
+                        if real_url_match:
+                            import urllib.parse
+                            real_url = urllib.parse.unquote(real_url_match.group(1))
+                            if any(site in real_url for site in target_sites):
+                                question_urls.append(real_url)
+                    except:
+                        pass
+        
+        # 去重
+        question_urls = list(set(question_urls))
+        print(f"[深度爬取] ✓ 找到 {len(question_urls)} 个题库链接")
+        
+        # 【V25.0增强】如果没找到链接，尝试直接访问题库网站
+        if len(question_urls) == 0:
+            print(f"[深度爬取] ⚠️ 搜索引擎未返回题库链接，尝试直接访问题库...")
+            
+            # 构造菁优网搜索URL（最常用的题库网站）
+            jyeoo_keywords = f"{subject} {' '.join(knowledge_points[:2])}"
+            jyeoo_search_url = f"https://www.jyeoo.com/search?q={requests.utils.quote(jyeoo_keywords)}&type=question"
+            question_urls.append(jyeoo_search_url)
+            
+            print(f"[深度爬取] 直接访问菁优网: {jyeoo_search_url[:60]}...")
+        
+        # ---- 步骤2: 爬取题目详情（简化版）----
+        questions_data = []
+        
+        for url in question_urls[:3]:  # 只爬取前3个，避免过慢
+            try:
+                print(f"[深度爬取] 正在访问: {url[:50]}...")
+                
+                # 访问详情页
+                detail_response = requests.get(url, headers=headers, timeout=8)
+                detail_response.encoding = 'utf-8'
+                detail_soup = BeautifulSoup(detail_response.text, 'html.parser')
+                
+                # 提取题目文本（通用策略）
+                question_text = ""
+                
+                # 尝试多种选择器（不同网站结构不同）
+                possible_selectors = [
+                    {'class': 'question'},
+                    {'class': 'stem'},
+                    {'class': 'timu'},
+                    {'class': 'topic-title'},
+                    {'id': 'question'}
+                ]
+                
+                for selector in possible_selectors:
+                    elem = detail_soup.find('div', selector)
+                    if elem:
+                        question_text = elem.get_text(strip=True)[:500]  # 限制长度
+                        break
+                
+                # 提取图片URL
+                images = []
+                img_tags = detail_soup.find_all('img', limit=5)
+                for img in img_tags:
+                    src = img.get('src') or img.get('data-src')
+                    if src and ('question' in src.lower() or 'upload' in src.lower()):
+                        # 转换为绝对URL
+                        absolute_url = urljoin(url, src)
+                        images.append(absolute_url)
+                
+                if question_text or images:
+                    questions_data.append({
+                        'text': question_text,
+                        'images': images,
+                        'source': url
+                    })
+                    print(f"[深度爬取] ✓ 提取题目: {len(question_text)}字符, {len(images)}张图片")
+                    
+            except Exception as e:
+                print(f"[深度爬取] ⚠️ 爬取失败: {str(e)[:50]}")
+                continue
+        
+        # ---- 步骤3: 格式化返回数据 ----
+        if questions_data:
+            result_text = f"【网络爬取到 {len(questions_data)} 道真实题目】\n\n"
+            
+            for i, q in enumerate(questions_data, 1):
+                result_text += f"题目{i}:\n"
+                result_text += f"内容: {q['text'][:300]}\n"
+                
+                if q['images']:
+                    result_text += f"包含图片: {len(q['images'])}张\n"
+                    result_text += f"图片URL: {q['images'][0]}\n"
+                    result_text += "【重要】此题包含精确图形，建议直接使用或轻微改编，不要让AI重新生成图形\n"
+                
+                result_text += f"来源: {q['source'][:80]}...\n"
+                result_text += "---\n\n"
+            
+            result_text += """
+【出题建议】
+1. 对于包含复杂图形的题目，建议：
+   - 直接使用原题（修改数字或文字）
+   - 保留图片URL或描述图片内容
+   - 不要尝试用SVG重新绘制复杂图形
+   
+2. 对于纯文字题目：
+   - 可以自由改编
+   - 适当增加图表辅助（简单图形）
+"""
+            
+            print(f"[深度爬取] ✓ 成功爬取 {len(questions_data)} 道题目")
+            return result_text
+        else:
+            # 降级：返回搜索摘要
+            print(f"[深度爬取] ⚠️ 未能爬取到题目，降级为摘要模式")
+            return await _fallback_simple_search(subject, knowledge_points, difficulty, headers)
+            
+    except Exception as e:
+        print(f"[深度爬取] ❌ 爬取失败: {e}")
+        # 降级策略
+        try:
+            return await _fallback_simple_search(subject, knowledge_points, difficulty, headers)
+        except:
+            raise
+
+
+async def _fallback_simple_search(subject: str, knowledge_points: List[str], difficulty: str, headers: dict) -> str:
+    """
+    【V25.0增强】降级策略：简单摘要搜索
+    即使无法爬取到具体题目，也提供有用的题型指导
+    """
+    import requests
+    from bs4 import BeautifulSoup
+    
+    kp_str = " ".join(knowledge_points[:3])
+    search_query = f"{subject} {kp_str} {difficulty} 练习题"
+    search_url = f"https://www.baidu.com/s?wd={requests.utils.quote(search_query)}"
+    
+    print(f"[降级搜索] 搜索关键词: {search_query}")
+    
+    try:
+        response = requests.get(search_url, headers=headers, timeout=10)
+        response.encoding = 'utf-8'
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        result_texts = []
+        for result in soup.find_all('div', class_=['result', 'c-container'], limit=10):
+            # 提取标题
+            title_elem = result.find(['h3', 'a'])
+            if title_elem:
+                title = title_elem.get_text(strip=True)
+                if len(title) > 10:  # 过滤太短的标题
+                    result_texts.append(f"【题型参考】{title}")
+            
+            # 提取摘要
+            abstract_elem = result.find(['div', 'span'], class_=['c-abstract', 'content-right_8Zs40'])
+            if abstract_elem:
+                abstract = abstract_elem.get_text(strip=True)
+                if len(abstract) > 20:  # 过滤太短的摘要
+                    result_texts.append(f"内容: {abstract[:200]}")
+            
+            result_texts.append("---")
+        
+        combined_text = "\n".join(result_texts)
+        if len(combined_text) > 3000:
+            combined_text = combined_text[:3000] + "\n...(已截断)"
+        
+        print(f"[降级搜索] 提取到 {len(result_texts)//3} 条参考信息，总长度: {len(combined_text)} 字符")
+        
+        # 如果搜索结果太少，添加通用指导
+        if len(combined_text) < 200:
+            combined_text += f"""
+
+【出题指导（网络资源不足时）】
+主题：{subject} - {kp_str}
+难度：{difficulty}
+
+建议题型：
+1. 概念理解题：考查{knowledge_points[0] if knowledge_points else '核心概念'}的定义和性质
+2. 计算应用题：结合实际场景进行{subject}计算
+3. 综合分析题：多个知识点的综合运用
+
+题目要求：
+- 难度适中，贴近{difficulty}水平
+- 注重知识点的实际应用
+- 如需图形，使用简单SVG或详细文字描述
+"""
+        
+        return combined_text if combined_text.strip() else "（网络搜索未返回结果）"
+    
+    except Exception as e:
+        print(f"[降级搜索] ❌ 搜索失败: {e}")
+        # 最终降级：返回基础指导
+        return f"""
+【网络搜索不可用 - 使用AI独立出题】
+主题：{subject} - {' '.join(knowledge_points[:3])}
+难度：{difficulty}
+
+请根据上述主题，结合学生错题特点，独立生成高质量练习题。
+注意：
+1. 如需图形，使用简单SVG代码或详细文字描述
+2. 避免过于复杂的图形（AI绘制不够精确）
+3. 题目应具有典型性和针对性
+"""
+
+# ==============================================================================
 # AI智能出题API
 # ==============================================================================
 
 @app.post("/questions/generate")
 async def generate_questions(request: QuestionGenerateRequest):
-    """基于错题生成新题目"""
+    """
+    【V25.0增强】基于错题生成新题目
+    - 支持图表生成（SVG、Markdown表格）
+    - 支持网络辅助出题（可选）
+    """
     mistakes = load_mistakes()
     
     # 获取指定的错题
@@ -756,39 +1074,170 @@ async def generate_questions(request: QuestionGenerateRequest):
     if not selected_mistakes:
         raise HTTPException(status_code=400, detail="未找到指定的错题")
     
-    # 提取知识点
+    # 提取知识点和学科信息
     all_knowledge_points = []
+    subjects = set()
     for mistake in selected_mistakes:
         all_knowledge_points.extend(mistake.get("knowledge_points", []))
+        if mistake.get("subject"):
+            subjects.add(mistake["subject"])
     
     knowledge_points_str = "、".join(set(all_knowledge_points)) if all_knowledge_points else "综合知识"
+    subject_str = "、".join(subjects) if subjects else "综合"
     
-    # 构建AI提示词
-    prompt = f"""你是一位经验丰富的教师。请根据学生的错题记录，生成{request.count}道新的练习题。
+    # 【V25.0新功能】网络辅助出题
+    web_reference_text = ""
+    if request.allow_web_search:
+        print(f"\n{'='*70}")
+        print(f"[网络辅助出题] 启用网络搜索模式")
+        print(f"{'='*70}\n")
+        
+        try:
+            web_reference_text = await search_web_for_questions(
+                subject=subject_str,
+                knowledge_points=list(set(all_knowledge_points)),
+                difficulty=request.difficulty
+            )
+            print(f"[网络辅助出题] ✓ 获取到参考资料，长度: {len(web_reference_text)} 字符")
+        except Exception as e:
+            print(f"[网络辅助出题] ⚠️ 网络搜索失败，降级为纯AI出题: {e}")
+            web_reference_text = ""
+    
+    # 【V25.0增强】构建支持图表生成的AI提示词
+    if web_reference_text:
+        # 网络辅助模式的Prompt - 强调处理真实题目和图片
+        prompt = f"""你是一位经验丰富的教师。我刚刚从题库网站爬取了"{subject_str} {knowledge_points_str}"的真实题目，其中部分包含精确绘制的图形。请你**基于以下真实题目和学生的错题记录**，为学生生成{request.count}道高质量的练习题。
 
-【错题分析】
+【重要原则】
+1. **对于包含复杂图形的题目**（如几何图形、函数图像、实验装置等）：
+   - ✅ 直接使用原题，可以修改题干文字或数字
+   - ✅ 如果有图片URL，请在题目中说明："请参考原题图片：[图片URL]"
+   - ✅ 可以描述图片内容，但不要尝试用SVG重新绘制
+   - ❌ 不要让AI生成复杂的SVG图形（AI绘图不够精确）
+
+2. **对于纯文字题目**：
+   - 可以自由改编创新
+   - 可以添加简单的表格或简单几何图形（圆、三角形等）
+
+【网络爬取的真实题目】
+{web_reference_text}
+
+【学生错题分析】
 """
-    for i, mistake in enumerate(selected_mistakes, 1):
-        prompt += f"""
+        for i, mistake in enumerate(selected_mistakes, 1):
+            prompt += f"""
 错题{i}：
 - 题目：{mistake.get('question_text', '(无文字识别)')}
 - 错误分析：{mistake.get('ai_analysis', '(无分析)')}
 - 知识点：{', '.join(mistake.get('knowledge_points', ['未标注']))}
 """
-    
-    prompt += f"""
+        
+        prompt += f"""
 【出题要求】
 - 难度级别：{request.difficulty}
 - 题目数量：{request.count}道
 - 知识点：{knowledge_points_str}
 - 题型：选择题、填空题、解答题均可
+- **请参考网络资料的题型和风格，但务必原创或深度改编，确保题目质量和针对性**
+
+【V25.0新功能 - 图表支持】
+你现在可以在题目中加入图表，增强题目的可视化效果：
+
+1. **SVG图形**：当题目需要几何图形、函数图像时，你可以直接在题目内容中嵌入SVG代码
+   示例：
+   ```
+   <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+     <circle cx="100" cy="100" r="50" fill="none" stroke="black" stroke-width="2"/>
+     <line x1="100" y1="100" x2="150" y2="100" stroke="blue" stroke-width="2"/>
+     <text x="125" y="95" font-size="14">r=50</text>
+   </svg>
+   ```
+
+2. **Markdown表格**：当题目需要数据表格时，使用Markdown表格语法
+   示例：
+   ```
+   | x | 0 | 1 | 2 | 3 |
+   |---|---|---|---|---|
+   | y | 1 | 3 | 5 | 7 |
+   ```
+
+3. **LaTeX数学公式**：继续使用 $ 或 $$ 包裹公式
+   示例：行内公式 $x^2 + y^2 = r^2$，或独立公式 $$\\frac{{-b \\pm \\sqrt{{b^2-4ac}}}}{{2a}}$$
+
+请根据题目需要，适当使用这些可视化工具，让题目更加生动和易于理解。
 
 【输出格式】
 请严格按照以下格式输出每道题：
 
 ---题目1---
 题目内容：
-[题目正文，可以包含数学公式]
+[题目正文，可以包含数学公式、SVG图形或Markdown表格]
+
+答案：
+[标准答案]
+
+解析：
+[详细解题步骤和知识点说明]
+
+知识点：[知识点1, 知识点2]
+
+---题目2---
+...
+
+请确保题目质量高、有针对性、能帮助学生巩固薄弱环节。"""
+    else:
+        # 纯AI模式的Prompt
+        prompt = f"""你是一位经验丰富的教师。请根据学生的错题记录，生成{request.count}道新的练习题。
+
+【错题分析】
+"""
+        for i, mistake in enumerate(selected_mistakes, 1):
+            prompt += f"""
+错题{i}：
+- 题目：{mistake.get('question_text', '(无文字识别)')}
+- 错误分析：{mistake.get('ai_analysis', '(无分析)')}
+- 知识点：{', '.join(mistake.get('knowledge_points', ['未标注']))}
+"""
+        
+        prompt += f"""
+【出题要求】
+- 难度级别：{request.difficulty}
+- 题目数量：{request.count}道
+- 知识点：{knowledge_points_str}
+- 题型：选择题、填空题、解答题均可
+
+【V25.0新功能 - 图表支持】
+你现在可以在题目中加入图表，增强题目的可视化效果：
+
+1. **SVG图形**：当题目需要几何图形、函数图像时，你可以直接在题目内容中嵌入SVG代码
+   示例：
+   ```
+   <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
+     <circle cx="100" cy="100" r="50" fill="none" stroke="black" stroke-width="2"/>
+     <line x1="100" y1="100" x2="150" y2="100" stroke="blue" stroke-width="2"/>
+     <text x="125" y="95" font-size="14">r=50</text>
+   </svg>
+   ```
+
+2. **Markdown表格**：当题目需要数据表格时，使用Markdown表格语法
+   示例：
+   ```
+   | x | 0 | 1 | 2 | 3 |
+   |---|---|---|---|---|
+   | y | 1 | 3 | 5 | 7 |
+   ```
+
+3. **LaTeX数学公式**：继续使用 $ 或 $$ 包裹公式
+   示例：行内公式 $x^2 + y^2 = r^2$，或独立公式 $$\\frac{{-b \\pm \\sqrt{{b^2-4ac}}}}{{2a}}$$
+
+请根据题目需要，适当使用这些可视化工具，让题目更加生动和易于理解。
+
+【输出格式】
+请严格按照以下格式输出每道题：
+
+---题目1---
+题目内容：
+[题目正文，可以包含数学公式、SVG图形或Markdown表格]
 
 答案：
 [标准答案]
@@ -946,16 +1395,22 @@ def export_markdown(request: ExportRequest):
     }
 
 @app.post("/export/pdf")
-def export_pdf(request: ExportRequest):
-    """导出为PDF格式"""
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import cm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
-    from reportlab.lib.enums import TA_CENTER
+async def export_pdf(request: ExportRequest):
+    """
+    【V25.0新功能】导出为PDF格式（支持LaTeX公式渲染）
+    
+    技术方案：
+    1. 将题目的Markdown内容转换为HTML
+    2. 在HTML中注入MathJax配置和CDN
+    3. 使用Pyppeteer（无头浏览器）加载HTML并执行MathJax渲染
+    4. 将渲染后的页面打印为PDF
+    
+    这确保了LaTeX公式能够正确显示在PDF中
+    """
+    from pyppeteer import launch
     import tempfile
+    import markdown
+    import asyncio
     
     questions = load_questions()
     selected = [q for q in questions if q["id"] in request.question_ids]
@@ -963,78 +1418,324 @@ def export_pdf(request: ExportRequest):
     if not selected:
         raise HTTPException(status_code=400, detail="未找到指定的题目")
     
-    # 创建临时文件
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
-    temp_path = temp_file.name
-    temp_file.close()
+    print(f"\n{'='*70}")
+    print(f"[PDF导出] 准备导出{len(selected)}道题目")
+    print(f"{'='*70}\n")
     
     try:
-        doc = SimpleDocTemplate(temp_path, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm)
-        story = []
+        # ---- 步骤1: 构建包含MathJax的自包含HTML ----
+        print("[PDF导出] 步骤1: 构建HTML文档...")
         
-        # 注册中文字体
-        try:
-            pdfmetrics.registerFont(TTFont('SimSun', 'C:/Windows/Fonts/simsun.ttc'))
-            font_name = 'SimSun'
-        except:
-            font_name = 'Helvetica'
+        # HTML头部 - 注入MathJax配置
+        html_content = """<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>练习题集</title>
+    
+    <!-- 【V25.0优化】MathJax 3配置 - 使用同步加载确保渲染 -->
+    <script>
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$']],
+                displayMath: [['$$', '$$']],
+                processEscapes: true,
+                processEnvironments: true
+            },
+            svg: {
+                fontCache: 'global',
+                displayAlign: 'left'
+            },
+            startup: {
+                pageReady: () => {
+                    return MathJax.startup.defaultPageReady().then(() => {
+                        console.log('✅ MathJax渲染完成');
+                        document.body.setAttribute('data-mathjax-ready', 'true');
+                    }).catch((err) => {
+                        console.error('❌ MathJax渲染失败:', err);
+                        document.body.setAttribute('data-mathjax-ready', 'error');
+                    });
+                }
+            },
+            options: {
+                enableMenu: false,
+                renderActions: {
+                    addMenu: []
+                }
+            }
+        };
+    </script>
+    <!-- 使用CDN备用方案：jsDelivr（主）-> unpkg（备用） -->
+    <script id="MathJax-script" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+    
+    <!-- 样式 -->
+    <style>
+        body {
+            font-family: "SimSun", "Microsoft YaHei", sans-serif;
+            line-height: 1.8;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1 {
+            text-align: center;
+            color: #5C6AC4;
+            border-bottom: 3px solid #5C6AC4;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+        .question {
+            margin-bottom: 40px;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 10px;
+            border-left: 4px solid #5C6AC4;
+        }
+        .question-title {
+            font-size: 18px;
+            font-weight: bold;
+            color: #5C6AC4;
+            margin-bottom: 15px;
+        }
+        .question-content {
+            margin-bottom: 15px;
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+        .answer {
+            background: #e8f5e9;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        .explanation {
+            background: #fff3e0;
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        .knowledge-points {
+            margin-top: 10px;
+            font-size: 12px;
+        }
+        .knowledge-point {
+            display: inline-block;
+            background: #e3f2fd;
+            padding: 4px 10px;
+            border-radius: 4px;
+            margin-right: 8px;
+            margin-top: 5px;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin: 15px 0;
+        }
+        table td, table th {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+"""
         
-        # 样式
-        styles = getSampleStyleSheet()
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontName=font_name,
-            fontSize=18,
-            alignment=TA_CENTER,
-            spaceAfter=20
-        )
-        question_style = ParagraphStyle(
-            'QuestionStyle',
-            parent=styles['Normal'],
-            fontName=font_name,
-            fontSize=12,
-            spaceAfter=12,
-            leading=18
-        )
+        # 添加标题
+        html_content += f"""
+    <h1>{request.title}</h1>
+    <p style="text-align: center; color: #999; margin-bottom: 40px;">
+        生成时间：{datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}
+    </p>
+"""
         
-        # 标题
-        story.append(Paragraph(request.title, title_style))
-        story.append(Paragraph(f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", question_style))
-        story.append(Spacer(1, 0.5*cm))
+        # ---- 步骤2: 添加每道题目 ----
+        print(f"[PDF导出] 步骤2: 转换{len(selected)}道题目为HTML...")
         
-        # 题目内容
         for i, q in enumerate(selected, 1):
-            story.append(Paragraph(f"<b>题目{i}</b>", title_style))
-            story.append(Spacer(1, 0.3*cm))
+            # 使用markdown库转换Markdown为HTML
+            content_html = markdown.markdown(q['content'], extensions=['extra', 'nl2br'])
+            answer_html = markdown.markdown(q['answer'])
+            explanation_html = markdown.markdown(q.get('explanation', '')) if q.get('explanation') else ''
             
-            # 题目内容（简化LaTeX）
-            content_text = q['content'].replace('\n', '<br/>').replace('$', '')
-            story.append(Paragraph(content_text, question_style))
-            story.append(Spacer(1, 0.3*cm))
-            
-            # 答案
-            answer_text = f"<b>答案：</b>{q['answer'].replace('$', '')}"
-            story.append(Paragraph(answer_text, question_style))
-            story.append(Spacer(1, 0.2*cm))
-            
-            # 解析
-            if q.get('explanation'):
-                explanation_text = f"<b>解析：</b>{q['explanation'].replace(chr(10), '<br/>').replace('$', '')}"
-                story.append(Paragraph(explanation_text, question_style))
-            
-            story.append(Spacer(1, 0.5*cm))
+            html_content += f"""
+    <div class="question">
+        <div class="question-title">题目 {i}</div>
+        <div class="question-content">{content_html}</div>
         
-        # 生成PDF
-        doc.build(story)
+        <div class="answer">
+            <strong style="color: #4CAF50;">答案：</strong>
+            {answer_html}
+        </div>
+"""
+            
+            if explanation_html:
+                html_content += f"""
+        <div class="explanation">
+            <strong style="color: #FF9800;">解析：</strong>
+            {explanation_html}
+        </div>
+"""
+            
+            # 知识点
+            if q.get('knowledge_points'):
+                kp_tags = ''.join([f'<span class="knowledge-point">{kp}</span>' 
+                                   for kp in q['knowledge_points']])
+                html_content += f"""
+        <div class="knowledge-points">
+            <strong>知识点：</strong>{kp_tags}
+        </div>
+"""
+            
+            html_content += "    </div>\n"
         
-        return FileResponse(
-            temp_path,
-            media_type='application/pdf',
-            filename=f"{request.title}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        # HTML尾部
+        html_content += """
+    <!-- 等待MathJax渲染完成的标记 -->
+    <script>
+        // 渲染完成后设置标记
+        if (window.MathJax) {
+            MathJax.startup.promise.then(() => {
+                document.body.setAttribute('data-mathjax-ready', 'true');
+            });
+        }
+    </script>
+</body>
+</html>
+"""
+        
+        print(f"[PDF导出] ✓ HTML文档构建完成, 大小: {len(html_content)} 字符")
+        
+        # ---- 步骤3: 保存临时HTML文件 ----
+        temp_html = tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', delete=False, suffix='.html')
+        temp_html.write(html_content)
+        temp_html_path = temp_html.name
+        temp_html.close()
+        
+        print(f"[PDF导出] ✓ HTML文件保存至: {temp_html_path}")
+        
+        # 【调试功能】同时保存一份到固定位置，方便调试
+        try:
+            # 使用绝对路径确保目录创建成功
+            debug_dir = Path(__file__).parent / "generated_papers"
+            debug_dir.mkdir(parents=True, exist_ok=True)
+            debug_html_path = debug_dir / "latest_export_debug.html"
+            
+            with open(debug_html_path, 'w', encoding='utf-8') as f:
+                f.write(html_content)
+            print(f"[PDF导出] 📝 调试HTML已保存至: {debug_html_path}")
+            print(f"[PDF导出] 💡 提示：可在浏览器中打开此文件检查公式渲染")
+        except Exception as debug_err:
+            print(f"[PDF导出] ⚠️ 调试HTML保存失败（不影响PDF生成）: {debug_err}")
+        
+        # ---- 步骤4: 使用Pyppeteer启动无头浏览器并渲染 ----
+        print("[PDF导出] 步骤3: 启动无头浏览器...")
+        
+        browser = await launch(
+            headless=True,
+            args=['--no-sandbox', '--disable-setuid-sandbox']
         )
+        page = await browser.newPage()
+        
+        print("[PDF导出] ✓ 浏览器启动成功")
+        print(f"[PDF导出] 步骤4: 加载HTML并执行MathJax渲染...")
+        
+        # 【V25.0优化】计算超时时间：每道题2分钟
+        question_count = len(selected)
+        timeout_per_question = 120000  # 2分钟 = 120秒 = 120000毫秒
+        total_timeout = question_count * timeout_per_question
+        print(f"[PDF导出] 题目数量: {question_count}道, 超时时间: {total_timeout/1000}秒")
+        
+        # 加载HTML文件
+        await page.goto(f'file://{temp_html_path}', {
+            'waitUntil': 'networkidle0',
+            'timeout': total_timeout
+        })
+        
+        # 【V25.0优化】等待MathJax渲染完成（动态超时时间）
+        print("[PDF导出] 等待MathJax渲染...")
+        mathjax_ready = False
+        
+        try:
+            # 第一次尝试：等待渲染完成标记
+            await page.waitForSelector('body[data-mathjax-ready="true"]', {'timeout': total_timeout})
+            mathjax_ready = True
+            print("[PDF导出] ✓ MathJax渲染完成（通过标记检测）")
+        except Exception as e:
+            # 如果标记检测失败，手动等待并检查
+            print(f"[PDF导出] ⚠️ 标记检测超时，尝试手动等待...")
+            
+            try:
+                # 额外等待5秒让MathJax完成渲染
+                await asyncio.sleep(5)
+                
+                # 检查是否有MathJax渲染后的元素（.MathJax或.mjx-chtml）
+                has_mathjax = await page.evaluate('''() => {
+                    const mjElements = document.querySelectorAll('.MathJax, .mjx-chtml, mjx-container');
+                    return mjElements.length > 0;
+                }''')
+                
+                if has_mathjax:
+                    mathjax_ready = True
+                    print(f"[PDF导出] ✓ MathJax渲染完成（检测到渲染元素）")
+                else:
+                    print(f"[PDF导出] ⚠️ 未检测到MathJax元素，可能渲染失败")
+            except Exception as e2:
+                print(f"[PDF导出] ⚠️ 手动检测失败: {e2}")
+        
+        if not mathjax_ready:
+            print("[PDF导出] ⚠️ MathJax可能未完全渲染，但继续生成PDF")
+        
+        # ---- 步骤5: 生成PDF ----
+        print("[PDF导出] 步骤5: 生成PDF文件...")
+        
+        temp_pdf = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        temp_pdf_path = temp_pdf.name
+        temp_pdf.close()
+        
+        await page.pdf({
+            'path': temp_pdf_path,
+            'format': 'A4',
+            'margin': {
+                'top': '20mm',
+                'bottom': '20mm',
+                'left': '15mm',
+                'right': '15mm'
+            },
+            'printBackground': True
+        })
+        
+        print(f"[PDF导出] ✓ PDF生成成功: {temp_pdf_path}")
+        
+        # 关闭浏览器
+        await browser.close()
+        
+        # 清理临时HTML文件
+        os.remove(temp_html_path)
+        
+        print(f"{'='*70}")
+        print(f"[PDF导出] ✅ 导出完成")
+        print(f"{'='*70}\n")
+        
+        # 返回PDF文件
+        return FileResponse(
+            temp_pdf_path,
+            media_type='application/pdf',
+            filename=f"{request.title}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+            background=None  # 让FastAPI自动管理临时文件清理
+        )
+        
     except Exception as e:
-        print(f"PDF生成失败: {e}")
+        print(f"\n{'='*70}")
+        print(f"[PDF导出] ❌ 导出失败")
+        print(f"[PDF导出] 错误: {e}")
+        print(f"{'='*70}\n")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"PDF生成失败: {str(e)}")

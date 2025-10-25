@@ -4,9 +4,9 @@ color 0A
 echo.
 echo ╔══════════════════════════════════════════════════════════════╗
 echo ║                                                              ║
-echo ║           🎓 沐梧AI - 轻量级智能错题本系统 V24.0            ║
+echo ║           🎓 沐梧AI - 轻量级智能错题本系统 V25.0            ║
 echo ║                                                              ║
-echo ║              ✨ 无需登录 · 开箱即用 · AI助学 ✨              ║
+echo ║       ✨ 无需登录 · 开箱即用 · AI助学 · PDF导出 ✨         ║
 echo ║                                                              ║
 echo ╚══════════════════════════════════════════════════════════════╝
 echo.
@@ -37,10 +37,12 @@ echo   📱 访问地址：
 echo      前端界面：http://localhost:5173/
 echo      API文档： http://127.0.0.1:8000/docs
 echo.
-echo   📚 功能说明：
-echo      • 智能错题本 - 保存和管理错题
-echo      • AI智能出题 - 基于错题生成练习
-echo      • 试卷导出   - Markdown格式下载
+echo   📚 V25.0 新功能：
+echo      • ✅ LaTeX公式完美渲染
+echo      • ✅ PDF导出（公式可视化）
+echo      • ✅ AI生成图表题目（SVG+表格）
+echo      • ✅ 网络辅助出题（可选）
+echo      • ✅ 学科/年级分类筛选
 echo.
 echo   ⚙️  模式切换：
 echo      简化版（默认）: http://localhost:5173/
