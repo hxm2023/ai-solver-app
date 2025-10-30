@@ -54,21 +54,12 @@ const TextItem: React.FC<TextItemProps> = ({ content }) => {
     return () => clearTimeout(timer);
   }, [content]);
 
-  // 安全的Markdown解析
-  const parseMarkdown = (text: string): string => {
-    if (!text) return '';
-    
-    try {
-      return marked.parse(text) as string;
-    } catch (err) {
-      console.error('Markdown解析失败:', err);
-      return text.replace(/\n/g, '<br/>');
-    }
-  };
-
   if (!content) {
     return <div style={{ color: '#999', fontStyle: 'italic' }}>（无内容）</div>;
   }
+
+  // 简单处理换行，不使用marked.parse（避免破坏LaTeX公式）
+  const formattedContent = content.replace(/\n/g, '<br/>');
 
   return (
     <div
@@ -78,7 +69,7 @@ const TextItem: React.FC<TextItemProps> = ({ content }) => {
         whiteSpace: 'pre-wrap',
         lineHeight: '1.6'
       }}
-      dangerouslySetInnerHTML={{ __html: parseMarkdown(content) }}
+      dangerouslySetInnerHTML={{ __html: formattedContent }}
     />
   );
 };

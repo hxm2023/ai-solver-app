@@ -1201,16 +1201,20 @@ async def get_questions(
         import json
         items = []
         for q in questions:
+            # 题目内容优先使用 solve（完整内容），其次 subject_desc，最后才是 subject_title
+            content = q['solve'] or q['subject_desc'] or q['subject_title'] or ""
+            
             items.append({
                 "id": q['subject_id'],
-                "content": q['subject_title'] or "",
-                "answer": q['answer'] or q['solve'] or "",
+                "content": content,  # 使用完整题目内容
+                "answer": q['answer'] or "",
                 "explanation": q['explanation'] or "",
                 "knowledge_points": json.loads(q['knowledge_points']) if q['knowledge_points'] else [],
                 "difficulty": q['difficulty'] or "中等",
                 "created_at": q['created_at'].isoformat() if q['created_at'] else "",
                 "subject": q['subject_name'] or "未分类",
-                "grade": q['grade'] or "未分类"
+                "grade": q['grade'] or "未分类",
+                "title": q['subject_title'] or ""  # 添加标题字段
             })
         
         return {
@@ -2447,20 +2451,94 @@ async def generate_paper_with_subject_grade(
         
         ai_response = response.output.choices[0].message.content[0]['text']
         
-        # 4. 解析题目并保存到数据库（简化版）
-        # 这里可以添加更复杂的解析逻辑
+        # 打印AI响应以便调试
+        print(f"\n{'='*70}")
+        print("[AI响应内容预览]")
+        print(ai_response[:500])
+        print(f"{'='*70}\n")
+        
+        # 4. 解析题目并保存到数据库
         question_ids = []
         
-        # 简单创建一个题目示例
-        subject_id = SubjectManager.create_subject(
-            subject_title=f"{request.paper_title}_题目集",
-            subject_desc=ai_response[:1000],
-            solve=ai_response
-        )
-        question_ids.append(subject_id)
+        # 解析AI生成的题目（按"---题目X---"或"题目X："分割）
+        import re
         
-        # 关联到试卷
-        ExamManager.link_user_exam_subject(user_id, exam_id, subject_id)
+        # 尝试多种分割模式
+        questions_text = []
+        
+        # 模式1：---题目X---
+        if '---题目' in ai_response:
+            questions_text = re.split(r'---题目\d+---', ai_response)
+            print(f"[题目生成] 使用模式1分割（---题目X---）")
+        # 模式2：题目X：
+        elif re.search(r'题目\d+[：:]', ai_response):
+            questions_text = re.split(r'题目\d+[：:]', ai_response)
+            print(f"[题目生成] 使用模式2分割（题目X：）")
+        # 模式3：【题目X】
+        elif re.search(r'【题目\d+】', ai_response):
+            questions_text = re.split(r'【题目\d+】', ai_response)
+            print(f"[题目生成] 使用模式3分割（【题目X】）")
+        else:
+            # 如果没有找到分隔符，直接使用完整响应
+            questions_text = [ai_response]
+            print(f"[题目生成] 未找到分隔符，使用完整响应")
+        
+        questions_text = [q.strip() for q in questions_text if q.strip()]
+        
+        print(f"[题目生成] 解析到 {len(questions_text)} 道题目")
+        
+        # 为每道题目创建单独的记录
+        for idx, question_text in enumerate(questions_text, 1):
+            try:
+                # 提取题目信息
+                title = f"{request.paper_title}_第{idx}题"
+                
+                # 尝试提取知识点
+                knowledge_points = []
+                kp_match = re.search(r'知识点[：:](.*?)(?:\n|$)', question_text)
+                if kp_match:
+                    kp_text = kp_match.group(1).strip()
+                    knowledge_points = [kp.strip() for kp in re.split(r'[,，、]', kp_text) if kp.strip()]
+                
+                # 提取答案
+                answer = ""
+                answer_match = re.search(r'答案[：:](.*?)(?=解析[：:]|知识点[：:]|$)', question_text, re.DOTALL)
+                if answer_match:
+                    answer = answer_match.group(1).strip()
+                
+                # 创建题目记录
+                subject_id = SubjectManager.create_subject(
+                    subject_title=title,
+                    subject_desc=question_text[:500],  # 题目描述（截取前500字符）
+                    solve=question_text,  # 完整题目内容
+                    answer=answer,  # 答案
+                    subject_type="generated",  # 标记为生成的题目
+                    subject_name=request.subject,  # 学科
+                    knowledge_points=json.dumps(knowledge_points, ensure_ascii=False) if knowledge_points else None
+                )
+                question_ids.append(subject_id)
+                
+                # 关联到试卷和用户
+                ExamManager.link_user_exam_subject(user_id, exam_id, subject_id)
+                
+                print(f"[题目生成] ✓ 保存题目 {idx}: {title}")
+            
+            except Exception as e:
+                print(f"[题目生成] ⚠️ 保存题目 {idx} 失败: {e}")
+                continue
+        
+        # 如果没有成功解析任何题目，至少保存完整的AI响应
+        if not question_ids:
+            print("[题目生成] ⚠️ 未能解析出单独题目，保存完整响应")
+            subject_id = SubjectManager.create_subject(
+                subject_title=f"{request.paper_title}_完整试卷",
+                subject_desc=ai_response[:1000],
+                solve=ai_response,
+                subject_type="generated",
+                subject_name=request.subject
+            )
+            question_ids.append(subject_id)
+            ExamManager.link_user_exam_subject(user_id, exam_id, subject_id)
         
         return {
             "success": True,
@@ -2468,8 +2546,9 @@ async def generate_paper_with_subject_grade(
             "subject": request.subject,
             "grade": request.grade,
             "question_ids": question_ids,
+            "questions_count": len(question_ids),  # 实际生成的题目数量
             "questions_preview": ai_response,
-            "message": "试卷生成成功"
+            "message": f"试卷生成成功，共生成 {len(question_ids)} 道题目"
         }
     
     except HTTPException:

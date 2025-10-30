@@ -100,18 +100,52 @@ const SimpleMistakeBookDB: React.FC<SimpleMistakeBookDBProps> = ({ hideAuth = fa
   const [filterSubject, setFilterSubject] = useState<string>('');
   const [filterGrade, setFilterGrade] = useState<string>('');
 
-  // 【修复】参考本地版本的简单有效方法
+  // 【修复】确保MathJax正确渲染
   useEffect(() => {
-    if (mistakes.length > 0 || questions.length > 0 || activeTab) {
-      // 延迟200ms后渲染公式（给DOM更新留时间）
-      setTimeout(() => {
-        const contentDivs = document.querySelectorAll('.math-content, .message-content, .mistake-section, .question-section');
-        if (contentDivs.length > 0 && window.MathJax?.typesetPromise) {
-          window.MathJax.typesetPromise(Array.from(contentDivs))
-            .then(() => console.log('✅ [MathJax] 错题本公式渲染完成'))
-            .catch((err: any) => console.error('❌ [MathJax] 渲染错误:', err));
+    const renderMath = async () => {
+      // 检查MathJax是否已加载
+      if (!window.MathJax) {
+        console.warn('⚠️ [MathJax] MathJax尚未加载');
+        return;
+      }
+
+      // 等待MathJax完全就绪
+      if (!window.MathJax.typesetPromise) {
+        console.warn('⚠️ [MathJax] typesetPromise不可用');
+        // 尝试等待一下
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (!window.MathJax.typesetPromise) {
+          console.error('❌ [MathJax] typesetPromise仍然不可用');
+          return;
         }
-      }, 200);
+      }
+
+      try {
+        // 渲染所有内容区域
+        const contentDivs = document.querySelectorAll('.math-content');
+        console.log(`🔄 [MathJax] 开始渲染，找到 ${contentDivs.length} 个内容区域`);
+        
+        if (contentDivs.length > 0) {
+          await window.MathJax.typesetPromise(Array.from(contentDivs));
+          console.log('✅ [MathJax] 错题本公式渲染完成');
+          
+          // 检查是否还有未渲染的LaTeX
+          const bodyText = document.body.textContent || '';
+          const hasUnrendered = /\$[^$]+\$|\\[a-zA-Z]+/.test(bodyText);
+          if (hasUnrendered) {
+            console.warn('⚠️ [MathJax] 检测到可能未渲染的公式，尝试全局渲染');
+            await window.MathJax.typesetPromise();
+          }
+        }
+      } catch (err) {
+        console.error('❌ [MathJax] 渲染错误:', err);
+      }
+    };
+
+    if (mistakes.length > 0 || questions.length > 0) {
+      // 延迟300ms，确保DOM完全更新
+      const timer = setTimeout(renderMath, 300);
+      return () => clearTimeout(timer);
     }
   }, [mistakes, questions, activeTab]);
 

@@ -284,10 +284,28 @@ class SubjectManager:
         subject_title: str,
         subject_desc: Optional[str] = None,
         image_url: Optional[str] = None,
-        solve: Optional[str] = None
+        solve: Optional[str] = None,
+        answer: Optional[str] = None,
+        subject_type: Optional[str] = None,
+        subject_name: Optional[str] = None,
+        knowledge_points: Optional[str] = None,
+        difficulty: Optional[str] = None,
+        grade: Optional[str] = None
     ) -> str:
         """
         创建题目
+        
+        Args:
+            subject_title: 题目标题
+            subject_desc: 题目描述
+            image_url: 图片URL
+            solve: 解答过程
+            answer: 答案
+            subject_type: 题目类型（如：generated, mistake等）
+            subject_name: 学科名称
+            knowledge_points: 知识点（JSON字符串）
+            difficulty: 难度
+            grade: 年级
         
         Returns:
             subject_id: 题目ID
@@ -298,12 +316,15 @@ class SubjectManager:
             subject_id = generate_subject_id()
             
             cursor.execute(
-                """INSERT INTO subject (subject_id, subject_title, subject_desc, image_url, solve)
-                   VALUES (%s, %s, %s, %s, %s)""",
-                (subject_id, subject_title, subject_desc, image_url, solve)
+                """INSERT INTO subject (
+                    subject_id, subject_title, subject_desc, image_url, solve, answer,
+                    subject_type, subject_name, knowledge_points, difficulty, grade
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                (subject_id, subject_title, subject_desc, image_url, solve, answer,
+                 subject_type, subject_name, knowledge_points, difficulty, grade)
             )
             
-            print(f"✅ 题目创建成功: {subject_id}")
+            print(f"✅ 题目创建成功: {subject_id} ({subject_type or '普通题目'})")
             return subject_id
     
     @staticmethod
