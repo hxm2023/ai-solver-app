@@ -10,91 +10,12 @@ import { marked } from 'marked';
 import './App.css';
 import './ModeSelector.css';
 
-// 配置marked以保护LaTeX公式
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-  pedantic: false,
-  sanitize: false,
-  smartLists: true,
-  smartypants: false, // 关键：不要转换引号和破折号，避免破坏LaTeX
-});
-
 import ReactCrop, { type Crop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
-import SimpleMistakeBook from './SimpleMistakeBook';
 
 // 声明全局MathJax对象
 declare global {
   interface Window { MathJax: any; }
-}
-
-// --- 【新增】React错误边界组件 ---
-class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  { hasError: boolean; error: Error | null }
-> {
-  constructor(props: { children: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    console.error('🔴 [ErrorBoundary] 捕获到渲染错误:', error);
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error('🔴 [ErrorBoundary] 错误详情:', error);
-    console.error('🔴 [ErrorBoundary] 组件堆栈:', errorInfo.componentStack);
-  }
-
-  render() {
-    if (this.state.hasError) {
-      return (
-        <div style={{
-          padding: '20px',
-          margin: '20px',
-          border: '2px solid #ff4444',
-          borderRadius: '8px',
-          backgroundColor: '#fff5f5'
-        }}>
-          <h2>😔 页面渲染出错</h2>
-          <p>错误信息：{this.state.error?.message || '未知错误'}</p>
-          <button 
-            onClick={() => {
-              this.setState({ hasError: false, error: null });
-              window.location.reload();
-            }}
-            style={{
-              padding: '10px 20px',
-              fontSize: '16px',
-              cursor: 'pointer',
-              backgroundColor: '#4CAF50',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px'
-            }}
-          >
-            🔄 刷新页面
-          </button>
-          <details style={{ marginTop: '20px', fontSize: '12px' }}>
-            <summary>技术详情（点击展开）</summary>
-            <pre style={{ 
-              backgroundColor: '#f5f5f5', 
-              padding: '10px', 
-              overflow: 'auto',
-              maxHeight: '200px'
-            }}>
-              {this.state.error?.stack || '无堆栈信息'}
-            </pre>
-          </details>
-        </div>
-      );
-    }
-
-    return this.props.children;
-  }
 }
 
 // --- 类型定义 ---
@@ -114,7 +35,7 @@ type SessionInfo = {
 };
 
 interface MainAppProps {
-  mode: 'solve' | 'review' | 'mistakeBook';
+  mode: 'solve' | 'review';
   onBack: () => void;
 }
 
@@ -154,7 +75,7 @@ function deleteSession(sessionId: string) {
 
 // --- 模式选择器组件 ---
 interface ModeSelectorProps {
-  onSelectMode: (mode: 'solve' | 'review' | 'mistakeBook') => void;
+  onSelectMode: (mode: 'solve' | 'review') => void;
 }
 const ModeSelector: React.FC<ModeSelectorProps> = ({ onSelectMode }) => {
   return (
@@ -177,13 +98,6 @@ const ModeSelector: React.FC<ModeSelectorProps> = ({ onSelectMode }) => {
               <span className="button-description">上传包含题目与答案的图片，获取专业点评</span>
             </div>
           </button>
-          <button className="mode-button" onClick={() => onSelectMode('mistakeBook')}>
-            <span className="button-icon">📚</span>
-            <div>
-              <span className="button-text">智能错题本</span>
-              <span className="button-description">管理错题，AI生成针对性练习</span>
-            </div>
-          </button>
         </div>
       </div>
     </div>
@@ -194,41 +108,6 @@ const ModeSelector: React.FC<ModeSelectorProps> = ({ onSelectMode }) => {
 // ==============================================================================
 
 function MainApp({ mode, onBack }: MainAppProps) {
-  // 如果是错题本模式，直接渲染SimpleMistakeBook
-  if (mode === 'mistakeBook') {
-    return (
-      <div style={{ minHeight: '100vh', background: '#f5f5f5' }}>
-        <div style={{
-          background: 'white',
-          padding: '15px 20px',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-          marginBottom: '0',
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center'
-        }}>
-          <button
-            onClick={onBack}
-            style={{
-              padding: '8px 20px',
-              background: '#5C6AC4',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: 'bold'
-            }}
-          >
-            ← 返回主菜单
-          </button>
-          <h2 style={{ margin: 0, color: '#333' }}>📚 智能错题本</h2>
-          <div style={{ width: '100px' }}></div>
-        </div>
-        <SimpleMistakeBook />
-      </div>
-    );
-  }
   // --- 状态管理 ---
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatImageSrc, setChatImageSrc] = useState<string>('');
@@ -258,77 +137,42 @@ function MainApp({ mode, onBack }: MainAppProps) {
 
   const backendUrl = 'http://127.0.0.1:8000';
 
-  // --- 【统一】MathJax渲染 & 滚动 ---
+  // --- 效果钩子 (渲染 & 滚动 & 会话持久化) ---
   useEffect(() => {
-    console.log('🔄 [useEffect] messages更新, 数量:', messages.length);
-    
     if (messages.length > 0) {
-      const timer = setTimeout(() => {
-        try {
-          console.log('📐 [MathJax] 准备渲染...');
-          
-          // 滚动到底部
-          if (chatEndRef.current) {
-            chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-            console.log('✅ [Scroll] 已滚动到底部');
-          }
-          
-          // MathJax渲染
-          if (window.MathJax && window.MathJax.typesetPromise) {
-            window.MathJax.typesetPromise()
-              .then(() => {
-                console.log('✅ [MathJax] 渲染成功');
-              })
-              .catch((err: any) => {
-                console.error('❌ [MathJax] 渲染失败:', err);
-                console.error('❌ [MathJax] 错误堆栈:', err.stack);
-              });
-          } else {
-            console.warn('⚠️ [MathJax] MathJax未加载或不可用');
-          }
-        } catch (err) {
-          console.error('❌ [useEffect] MathJax渲染流程异常:', err);
+      setTimeout(() => {
+        const answerDivs = document.querySelectorAll('.message-content');
+        if (answerDivs.length > 0 && window.MathJax?.typesetPromise) {
+          window.MathJax.typesetPromise(Array.from(answerDivs)).catch((err: any) => console.error('MathJax typeset error:', err));
         }
-      }, 150);
-      
-      return () => {
-        console.log('🧹 [useEffect] 清理定时器');
-        clearTimeout(timer);
-      };
+      }, 100);
     }
+  }, [messages]);
+  
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
   // --- 【新增】加载会话列表 ---
   useEffect(() => {
-    console.log('📋 [useEffect] 加载会话列表, mode:', mode);
-    try {
-      const allSessions = getSessions().filter(s => s.mode === mode);
-      setSessions(allSessions);
-      console.log('✅ [会话列表] 加载成功, 数量:', allSessions.length);
-    } catch (err) {
-      console.error('❌ [会话列表] 加载失败:', err);
-    }
+    const allSessions = getSessions().filter(s => s.mode === mode);
+    setSessions(allSessions);
   }, [mode]);
   
   // --- 【新增】保存当前会话到历史（包含完整消息） ---
   useEffect(() => {
     if (sessionId && chatTitle && chatImageSrc && messages.length > 0) {
-      console.log('💾 [useEffect] 保存会话, sessionId:', sessionId);
-      try {
-        saveSession({
-          sessionId,
-          title: chatTitle,
-          timestamp: Date.now(),
-          mode,
-          imageSrc: chatImageSrc,
-          messages: messages
-        });
-        // 刷新会话列表
-        setSessions(getSessions().filter(s => s.mode === mode));
-        console.log('✅ [会话保存] 成功');
-      } catch (err) {
-        console.error('❌ [会话保存] 失败:', err);
-      }
+      saveSession({
+        sessionId,
+        title: chatTitle,
+        timestamp: Date.now(),
+        mode,
+        imageSrc: chatImageSrc,
+        messages: messages  // 保存完整消息历史
+        // 不再保存 imageBase64（避免 localStorage 配额超出）
+      });
+      // 刷新会话列表
+      setSessions(getSessions().filter(s => s.mode === mode));
     }
   }, [sessionId, chatTitle, chatImageSrc, messages, mode]);
 
@@ -437,60 +281,30 @@ function MainApp({ mode, onBack }: MainAppProps) {
         hasError = true;
       } else {
         // 显示完整回答
-        let fullContent = data.response || '';
+        const fullContent = data.response;
         
-        // 【新增】如果错题已自动保存，添加提示信息
-        if (data.mistake_saved && data.knowledge_points && data.knowledge_points.length > 0) {
-          const knowledgePointsText = data.knowledge_points.join('、');
-          const mistakeSavedNotice = `\n\n---\n\n✅ **此题已自动保存到错题本**\n\n📌 **知识点标签**：${knowledgePointsText}\n\n💡 前往"智能错题本"模块可查看和管理错题，或基于错题生成练习试卷。`;
-          fullContent = fullContent.replace("[MISTAKE_DETECTED]", "").trim() + mistakeSavedNotice;
-        } else {
-          // 清理特殊标记
-          fullContent = fullContent.replace("[MISTAKE_DETECTED]", "").replace("[CORRECT]", "").trim();
-        }
+        console.log('[DEBUG] ========== 准备更新消息 ==========');
+        console.log('[DEBUG] fullContent 长度:', fullContent?.length);
+        console.log('[DEBUG] fullContent 前100字:', fullContent?.substring(0, 100));
+        console.log('[DEBUG] imageBlob 存在:', !!imageBlob);
+        console.log('[DEBUG] 当前 messages 数量:', messages.length);
+        console.log('[DEBUG] =====================================');
         
-        console.log('📦 [消息更新] ========== 准备更新消息 ==========');
-        console.log('📦 [消息更新] fullContent 长度:', fullContent?.length);
-        console.log('📦 [消息更新] fullContent 类型:', typeof fullContent);
-        console.log('📦 [消息更新] fullContent 前100字:', fullContent?.substring(0, 100));
-        console.log('📦 [消息更新] imageBlob 存在:', !!imageBlob);
-        console.log('📦 [消息更新] 当前 messages 数量:', messages.length);
-        console.log('📦 [消息更新] mistake_saved:', data.mistake_saved);
-        console.log('📦 [消息更新] ================================================');
-        
-        try {
-          if (!imageBlob) {
-            console.log('📝 [消息更新] 追问模式 - 追加AI回答');
-            setMessages(prev => {
-              console.log('  📝 [状态更新] 当前消息数:', prev.length);
-              const newMessages = [...prev, { role: 'assistant' as const, content: fullContent }];
-              console.log('  📝 [状态更新] 更新后消息数:', newMessages.length);
-              console.log('  📝 [状态更新] 最后一条消息长度:', newMessages[newMessages.length - 1]?.content?.length);
-              return newMessages;
-            });
-            console.log('✅ [消息更新] 追问模式消息更新完成');
-          } else {
-            console.log('📝 [消息更新] 首次提问 - 创建新消息列表');
-            const newMessages: Message[] = [
-              userMessage, 
-              { role: 'assistant' as const, content: fullContent }
-            ];
-            console.log('  📝 [状态更新] 新消息列表长度:', newMessages.length);
-            console.log('  📝 [状态更新] 用户消息:', userMessage.content.substring(0, 50));
-            console.log('  📝 [状态更新] AI消息长度:', fullContent.length);
-            
-            setMessages(newMessages);
-            console.log('✅ [消息更新] 首次提问消息更新完成');
-          }
-        } catch (updateErr) {
-          console.error('❌ [消息更新] setMessages调用失败:', updateErr);
-          console.error('❌ [消息更新] 错误详情:', {
-            name: (updateErr as Error).name,
-            message: (updateErr as Error).message,
-            stack: (updateErr as Error).stack
+        if (!imageBlob) {
+          setMessages(prev => {
+            const newMessages = [...prev, { role: 'assistant' as const, content: fullContent }];
+            console.log('[DEBUG] 追问模式 - 新消息数量:', newMessages.length);
+            return newMessages;
           });
-          throw updateErr; // 重新抛出，让外层catch处理
+        } else {
+          const newMessages: Message[] = [userMessage, { role: 'assistant' as const, content: fullContent }];
+          console.log('[DEBUG] 首次提问 - 新消息数量:', newMessages.length);
+          console.log('[DEBUG] 用户消息:', userMessage);
+          console.log('[DEBUG] AI消息长度:', fullContent.length);
+          setMessages(newMessages);
         }
+        
+        console.log('[临时] AI回答长度:', fullContent.length);
       }
 
     } catch (err) {
@@ -615,26 +429,15 @@ function MainApp({ mode, onBack }: MainAppProps) {
   const handleLoadSession = async (session: SessionInfo) => {
     console.log('[会话恢复] 开始加载会话:', session.sessionId);
     
-    // 【修复】验证并清理消息数据，确保格式正确
-    const validMessages = (session.messages || []).filter((msg): msg is Message => {
-      // 确保msg存在，有role和content字段
-      return msg && 
-             typeof msg === 'object' && 
-             (msg.role === 'user' || msg.role === 'assistant') && 
-             typeof msg.content === 'string';
-    });
-    
-    console.log('[会话恢复] 原始消息数:', session.messages?.length || 0);
-    console.log('[会话恢复] 有效消息数:', validMessages.length);
-    
     // 恢复前端状态
     setSessionId(session.sessionId);
     setChatTitle(session.title);
     setChatImageSrc(session.imageSrc || '');
     setIsUploading(false);
-    setMessages(validMessages); // 使用验证后的消息
+    setMessages(session.messages || []); // 恢复消息历史
     setShowSidebar(false);
     
+    console.log('[会话恢复] 已恢复消息数:', session.messages?.length || 0);
     console.log('[会话提示] 如需继续追问，请确保后端服务未重启（会话仍在内存中）');
     
     // 【简化】不再尝试恢复后端会话
@@ -824,74 +627,16 @@ function MainApp({ mode, onBack }: MainAppProps) {
               </div>
             )}
             <div className="chat-messages">
-              {(() => {
-                console.log('🎨 [渲染] 开始渲染消息列表, 总数:', messages.length);
-                
-                // 过滤无效消息
-                const validMessages = messages.filter(msg => {
-                  const isValid = msg && msg.content && typeof msg.content === 'string';
-                  if (!isValid) {
-                    console.warn('⚠️ [渲染] 跳过无效消息:', msg);
-                  }
-                  return isValid;
-                });
-                
-                console.log('✅ [渲染] 有效消息数:', validMessages.length);
-                
-                return validMessages.map((msg, index) => {
-                  console.log(`🔹 [渲染] 第${index + 1}/${validMessages.length}条消息, role: ${msg.role}, 长度: ${msg.content?.length || 0}`);
-                  
-                  // 安全地解析Markdown，添加容错处理
-                  let htmlContent = '';
-                  try {
-                    const contentToRender = msg.content || '';
-                    console.log(`  📝 [Markdown] 准备解析, 前50字: ${contentToRender.substring(0, 50)}...`);
-                    
-                    htmlContent = marked.parse(contentToRender) as string;
-                    
-                    console.log(`  ✅ [Markdown] 解析成功, HTML长度: ${htmlContent.length}`);
-                  } catch (err) {
-                    console.error(`  ❌ [Markdown] 解析失败 (消息${index + 1}):`, err);
-                    console.error(`  ❌ [Markdown] 错误详情:`, {
-                      message: (err as Error).message,
-                      stack: (err as Error).stack,
-                      content: msg.content?.substring(0, 100)
-                    });
-                    
-                    // 如果解析失败，使用原始文本
-                    htmlContent = (msg.content || '').replace(/\n/g, '<br/>');
-                    console.log(`  🔄 [Markdown] 降级为纯文本, 长度: ${htmlContent.length}`);
-                  }
-                  
-                  try {
-                    return (
-                      <div key={index} className={`message-bubble-wrapper ${msg.role}`}>
-                        {msg.role === 'user' && <div className="avatar user-avatar">You</div>}
-                        <div className={`message-bubble ${msg.role}`}>
-                          <div className="message-content" dangerouslySetInnerHTML={{ __html: htmlContent }}></div>
-                        </div>
-                        {msg.role === 'assistant' && <div className="avatar assistant-avatar">AI</div>}
-                      </div>
-                    );
-                  } catch (renderErr) {
-                    console.error(`  ❌ [渲染] JSX渲染失败 (消息${index + 1}):`, renderErr);
-                    // 返回错误占位符
-                    return (
-                      <div key={index} className="message-bubble-wrapper assistant">
-                        <div className="message-bubble assistant" style={{ backgroundColor: '#fff3cd', border: '1px solid #ffc107' }}>
-                          <p>⚠️ 此消息渲染失败</p>
-                          <details>
-                            <summary>查看原始内容</summary>
-                            <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px' }}>
-                              {msg.content?.substring(0, 500)}
-                            </pre>
-                          </details>
-                        </div>
-                      </div>
-                    );
-                  }
-                });
-              })()}
+              {messages.map((msg, index) => (
+                <div key={index} className={`message-bubble-wrapper ${msg.role}`}>
+                  {/* --- 【新增】用户头像 (可选美化) --- */}
+                  {msg.role === 'user' && <div className="avatar user-avatar">You</div>}
+                  <div className={`message-bubble ${msg.role}`}>
+                    <div className="message-content" dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) }}></div>
+                  </div>
+                  {msg.role === 'assistant' && <div className="avatar assistant-avatar">AI</div>}
+                </div>
+              ))}
               {isLoading && (
                 <div className="message-bubble-wrapper assistant">
                   <div className="message-bubble assistant">
@@ -966,11 +711,10 @@ function MainApp({ mode, onBack }: MainAppProps) {
 }
 
 // --- 顶层App组件 (负责模式切换和重置) ---
-function AppCore() {
-  const [mode, setMode] = useState<'solve' | 'review' | 'mistakeBook' | null>(null);
+function App() {
+  const [mode, setMode] = useState<'solve' | 'review' | null>(null);
 
   const handleBackToModeSelection = () => {
-    console.log('🔙 [App] 返回模式选择');
     // 返回时，清除所有模式的会话记录
     localStorage.removeItem('sessionId_solve');
     localStorage.removeItem('chatTitle_solve');
@@ -980,21 +724,10 @@ function AppCore() {
   };
   
   if (!mode) {
-    console.log('🎯 [App] 显示模式选择器');
     return <ModeSelector onSelectMode={setMode} />;
   }
 
-  console.log('🎯 [App] 当前模式:', mode);
   return <MainApp mode={mode} onBack={handleBackToModeSelection} />;
-}
-
-// 用ErrorBoundary包裹整个App
-function App() {
-  return (
-    <ErrorBoundary>
-      <AppCore />
-    </ErrorBoundary>
-  );
 }
 
 export default App;

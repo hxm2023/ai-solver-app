@@ -29,6 +29,11 @@ markdown==3.5.1               # Markdown转HTML
 requests==2.31.0              # HTTP客户端（网络请求）
 beautifulsoup4==4.12.2        # HTML解析（网页爬取）
 
+# ---- 【V25.1新增】MySQL数据库支持 ----
+pymysql==1.1.0                # MySQL数据库驱动
+cryptography==41.0.7          # 密码加密（pymysql可选依赖）
+pyjwt==2.8.0                  # JWT令牌认证
+
 # ---- 工具库 ----
 python-dotenv==1.1.1          # 环境变量管理
 pydantic==2.11.7              # 数据验证（FastAPI依赖）
@@ -40,9 +45,15 @@ pydantic-settings==2.10.1     # 配置管理
 # 2. 网络辅助出题 - 爬取真实题目作为参考（requests + beautifulsoup4）
 # 3. 图表支持 - AI可生成SVG图形和Markdown表格（前端原生支持）
 # 4. 学科/年级标签 - 扩展数据模型，支持精准筛选
-# 
+#
+# V25.1新功能说明:
+# 1. MySQL数据库集成 - 替换JSON存储，支持多用户（pymysql）
+# 2. 用户认证系统 - 注册/登录，JWT令牌，密码加密
+# 3. 数据隔离 - 每个用户的错题、题目独立存储
+#
 # 安装说明:
 # - 首次安装: pip install -r requirements.txt
 # - pix2text会自动安装其他必要依赖（如onnxruntime等）
 # - pyppeteer首次使用会自动下载Chromium浏览器
+# - 数据库: 需要连接MySQL数据库 (edu@14.103.127.20:3306)
 # ==============================================================================

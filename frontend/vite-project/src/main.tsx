@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import MainApp from './MainApp.tsx'
 import SimpleMistakeBook from './SimpleMistakeBook.tsx'
+import AppDB from './AppDB.tsx'  // 【V25.1新增】数据库完整版本
 import './index.css'
 
 // ============================================================
@@ -81,15 +82,18 @@ console.log('✅ [全局错误监听] 已启用全局错误捕获机制');
 // 根据URL参数决定加载哪个界面
 // http://localhost:5173/?mode=old -> 原解题界面
 // http://localhost:5173/?mode=new -> 带登录的个性化学习系统
+// http://localhost:5173/?mode=db -> 数据库版本（需要登录）【V25.1新增】
 // http://localhost:5173/ 或 ?mode=simple -> 简化版错题本（默认，无需登录）
 const params = new URLSearchParams(window.location.search);
 const mode = params.get('mode');
 
 let AppToRender;
 if (mode === 'old') {
-  AppToRender = App;  // 原解题界面
+  AppToRender = App;  // 原解题界面（包含：AI解题、批改作业、错题本）
 } else if (mode === 'new') {
   AppToRender = MainApp;  // 带登录系统的界面
+} else if (mode === 'db') {
+  AppToRender = AppDB;  // 【V25.1】数据库完整版本（包含：AI解题、批改作业、错题本，与App.tsx功能一致）
 } else {
   AppToRender = SimpleMistakeBook;  // 默认：简化版错题本
 }

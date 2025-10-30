@@ -9,6 +9,22 @@
 import React, { useEffect, useRef } from 'react';
 import { marked } from 'marked';
 
+// 配置marked以保护LaTeX公式
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+  pedantic: false,
+  sanitize: false,
+  smartLists: true,
+  smartypants: false, // 关键：不要转换引号和破折号
+});
+
+declare global {
+  interface Window {
+    MathJax: any;
+  }
+}
+
 interface Question {
   id: string;
   content: string;

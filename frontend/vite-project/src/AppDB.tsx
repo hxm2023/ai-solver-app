@@ -1,8 +1,6 @@
 // ==============================================================================
-// 完整 App.tsx - 【V22.0 追问图片记忆修复版 + V19.0混合输入架构】
-// 后端：OCR增强（Pix2Text）+ 原图视觉（通义千问） + 追问带图片
-// 前端：手动续答逻辑
-// 核心修复：追问时后端重新发送图片，避免AI遗忘或幻觉
+// AppDB.tsx - 数据库版本【完全基于 App.tsx + 登录注册 + MySQL存储】
+// 核心原则：保持App.tsx的所有功能和UI，只添加登录和数据库存储
 // ==============================================================================
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -22,7 +20,7 @@ marked.setOptions({
 
 import ReactCrop, { type Crop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
-import SimpleMistakeBook from './SimpleMistakeBook';
+import SimpleMistakeBookDB from './SimpleMistakeBookDB';
 
 // 声明全局MathJax对象
 declare global {
@@ -109,58 +107,316 @@ type SessionInfo = {
   timestamp: number;
   mode: 'solve' | 'review';
   imageSrc?: string;
-  messages?: Message[];  // 保存完整消息历史
-  // 不再保存 imageBase64（避免 localStorage 配额超出）
+  messages?: Message[];
 };
 
 interface MainAppProps {
   mode: 'solve' | 'review' | 'mistakeBook';
   onBack: () => void;
+  userId: string;
+  token: string;
+  onLogout: () => void;
 }
 
-// --- 会话管理工具函数 ---
-const SESSION_STORAGE_KEY = 'ai_solver_sessions';
+// --- 【数据库版本】会话管理工具函数 ---
+const backendUrl = 'http://127.0.0.1:8000';
 
-function getSessions(): SessionInfo[] {
+async function getSessions(userId: string, token: string, mode: 'solve' | 'review'): Promise<SessionInfo[]> {
   try {
-    const data = localStorage.getItem(SESSION_STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch {
+    const response = await fetch(`${backendUrl}/api/db/sessions?mode=${mode}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.sessions || [];
+  } catch (err) {
+    console.error('[会话加载失败]', err);
     return [];
   }
 }
 
-function saveSession(session: SessionInfo) {
-  const sessions = getSessions();
-  const existingIndex = sessions.findIndex(s => s.sessionId === session.sessionId);
-  
-  if (existingIndex >= 0) {
-    // 更新现有会话
-    sessions[existingIndex] = { ...sessions[existingIndex], ...session };
-  } else {
-    // 添加新会话（放在最前面）
-    sessions.unshift(session);
+async function saveSessionToDB(userId: string, token: string, session: SessionInfo): Promise<void> {
+  try {
+    await fetch(`${backendUrl}/api/db/sessions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify(session)
+    });
+  } catch (err) {
+    console.error('[会话保存失败]', err);
   }
-  
-  // 只保留最近50个会话
-  const limitedSessions = sessions.slice(0, 50);
-  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(limitedSessions));
 }
 
-function deleteSession(sessionId: string) {
-  const sessions = getSessions().filter(s => s.sessionId !== sessionId);
-  localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(sessions));
+async function deleteSessionFromDB(userId: string, token: string, sessionId: string): Promise<void> {
+  try {
+    await fetch(`${backendUrl}/api/db/sessions/${sessionId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+  } catch (err) {
+    console.error('[会话删除失败]', err);
+  }
 }
+
+// --- 【新增】登录注册组件 ---
+interface AuthScreenProps {
+  onLoginSuccess: (userId: string, token: string) => void;
+}
+
+const AuthScreen: React.FC<AuthScreenProps> = ({ onLoginSuccess }) => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [account, setAccount] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [name, setName] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async () => {
+    setError('');
+    
+    if (!account || !password) {
+      setError('请输入账号和密码');
+      return;
+    }
+    
+    if (!isLogin && password !== confirmPassword) {
+      setError('两次密码不一致');
+      return;
+    }
+    
+    setLoading(true);
+    
+    try {
+      const endpoint = isLogin ? '/auth/login' : '/auth/register';
+      const response = await fetch(`${backendUrl}${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(isLogin ? { account, password } : { account, password, name: name || account })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        setError(data.detail || '操作失败');
+        setLoading(false);
+        return;
+      }
+      
+      // 登录/注册成功
+      if (isLogin) {
+        // 后端返回格式：{ access_token, token_type, user_info: { user_id, account } }
+        console.log('✅ [登录成功]', {
+          access_token: data.access_token ? `${data.access_token.substring(0, 20)}...` : 'undefined',
+          user_id: data.user_info?.user_id || 'undefined',
+          account: data.user_info?.account || 'undefined'
+        });
+        
+        localStorage.setItem('token', data.access_token);
+        localStorage.setItem('userId', data.user_info.user_id);
+        
+        console.log('✅ [Token已保存到localStorage]');
+        
+        onLoginSuccess(data.user_info.user_id, data.access_token);
+      } else {
+        // 注册成功后自动登录
+        setIsLogin(true);
+        setError('');
+        alert('注册成功！请登录');
+      }
+    } catch (err) {
+      setError('网络错误，请检查后端服务');
+      console.error('[认证错误]', err);
+    }
+    
+    setLoading(false);
+  };
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '20px'
+    }}>
+      <div style={{
+        background: 'white',
+        borderRadius: '12px',
+        padding: '40px',
+        width: '100%',
+        maxWidth: '400px',
+        boxShadow: '0 10px 40px rgba(0,0,0,0.2)'
+      }}>
+        <h1 style={{ textAlign: 'center', marginBottom: '30px', color: '#333' }}>
+          {isLogin ? '登录' : '注册'} - 沐梧AI
+        </h1>
+        
+        {error && (
+          <div style={{
+            padding: '10px',
+            background: '#fee',
+            border: '1px solid #fcc',
+            borderRadius: '6px',
+            marginBottom: '20px',
+            color: '#c00'
+          }}>
+            {error}
+          </div>
+        )}
+        
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>账号</label>
+          <input
+            type="text"
+            value={account}
+            onChange={e => setAccount(e.target.value)}
+            placeholder="请输入账号"
+            style={{
+              width: '100%',
+              padding: '12px',
+              border: '1px solid #ddd',
+              borderRadius: '6px',
+              fontSize: '14px',
+              boxSizing: 'border-box'
+            }}
+          />
+        </div>
+        
+        <div style={{ marginBottom: '20px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>密码</label>
+          <input
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="请输入密码"
+            style={{
+              width: '100%',
+              padding: '12px',
+              border: '1px solid #ddd',
+              borderRadius: '6px',
+              fontSize: '14px',
+              boxSizing: 'border-box'
+            }}
+          />
+        </div>
+        
+        {!isLogin && (
+          <>
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>确认密码</label>
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                placeholder="请再次输入密码"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>昵称（可选）</label>
+              <input
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="请输入昵称"
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '14px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+          </>
+        )}
+        
+        <button
+          onClick={handleSubmit}
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '14px',
+            background: loading ? '#999' : 'linear-gradient(90deg, #667eea 0%, #764ba2 100%)',
+            color: 'white',
+            border: 'none',
+            borderRadius: '6px',
+            fontSize: '16px',
+            fontWeight: 'bold',
+            cursor: loading ? 'not-allowed' : 'pointer',
+            marginBottom: '15px'
+          }}
+        >
+          {loading ? '处理中...' : (isLogin ? '登录' : '注册')}
+        </button>
+        
+        <div style={{ textAlign: 'center' }}>
+          <button
+            onClick={() => {
+              setIsLogin(!isLogin);
+              setError('');
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#667eea',
+              cursor: 'pointer',
+              fontSize: '14px',
+              textDecoration: 'underline'
+            }}
+          >
+            {isLogin ? '还没有账号？立即注册' : '已有账号？立即登录'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // --- 模式选择器组件 ---
 interface ModeSelectorProps {
   onSelectMode: (mode: 'solve' | 'review' | 'mistakeBook') => void;
+  onLogout: () => void;
 }
-const ModeSelector: React.FC<ModeSelectorProps> = ({ onSelectMode }) => {
+const ModeSelector: React.FC<ModeSelectorProps> = ({ onSelectMode, onLogout }) => {
   return (
     <div className="mode-selector-container">
       <div className="mode-selector-card">
-        <h1 className="mode-selector-title">请选择功能模式</h1>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h1 className="mode-selector-title">请选择功能模式</h1>
+          <button
+            onClick={onLogout}
+            style={{
+              padding: '8px 16px',
+              background: '#dc3545',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            退出登录
+          </button>
+        </div>
         <p className="mode-selector-subtitle">你想让AI为你解答难题，还是批改你的作业？</p>
         <div className="mode-buttons">
           <button className="mode-button" onClick={() => onSelectMode('solve')}>
@@ -189,12 +445,13 @@ const ModeSelector: React.FC<ModeSelectorProps> = ({ onSelectMode }) => {
     </div>
   );
 };
+
 // ==============================================================================
-// 完整 App.tsx - 第二部分: MainApp组件
+// MainApp组件 - 【完全复制 App.tsx 逻辑，只修改API调用】
 // ==============================================================================
 
-function MainApp({ mode, onBack }: MainAppProps) {
-  // 如果是错题本模式，直接渲染SimpleMistakeBook
+function MainApp({ mode, onBack, userId, token, onLogout }: MainAppProps) {
+  // 如果是错题本模式，直接渲染SimpleMistakeBookDB
   if (mode === 'mistakeBook') {
     return (
       <div style={{ minHeight: '100vh', background: '#f5f5f5' }}>
@@ -223,13 +480,27 @@ function MainApp({ mode, onBack }: MainAppProps) {
             ← 返回主菜单
           </button>
           <h2 style={{ margin: 0, color: '#333' }}>📚 智能错题本</h2>
-          <div style={{ width: '100px' }}></div>
+          <button
+            onClick={onLogout}
+            style={{
+              padding: '8px 20px',
+              background: '#dc3545',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px'
+            }}
+          >
+            退出登录
+          </button>
         </div>
-        <SimpleMistakeBook />
+        <SimpleMistakeBookDB userId={userId} token={token} />
       </div>
     );
   }
-  // --- 状态管理 ---
+  
+  // --- 状态管理（完全复制 App.tsx）---
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatImageSrc, setChatImageSrc] = useState<string>('');
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -241,11 +512,11 @@ function MainApp({ mode, onBack }: MainAppProps) {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [statusText, setStatusText] = useState<string>('');
-  const [showQuickButtons, setShowQuickButtons] = useState<boolean>(false); // 控制快捷按钮显示
+  const [showQuickButtons, setShowQuickButtons] = useState<boolean>(false);
   
   const [imageSrc, setImageSrc] = useState<string>('');
   const [crop, setCrop] = useState<Crop>();
-  const [isUploading, setIsUploading] = useState<boolean>(true); // 默认显示上传界面
+  const [isUploading, setIsUploading] = useState<boolean>(true);
   
   // --- 【新增】侧边栏相关状态 ---
   const [showSidebar, setShowSidebar] = useState<boolean>(false);
@@ -256,92 +527,74 @@ function MainApp({ mode, onBack }: MainAppProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
-  const backendUrl = 'http://127.0.0.1:8000';
-
-  // --- 【统一】MathJax渲染 & 滚动 ---
+  // --- 【修复】参考本地版本的简单有效方法 ---
   useEffect(() => {
-    console.log('🔄 [useEffect] messages更新, 数量:', messages.length);
-    
     if (messages.length > 0) {
-      const timer = setTimeout(() => {
-        try {
-          console.log('📐 [MathJax] 准备渲染...');
-          
-          // 滚动到底部
-          if (chatEndRef.current) {
-            chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
-            console.log('✅ [Scroll] 已滚动到底部');
-          }
-          
-          // MathJax渲染
-          if (window.MathJax && window.MathJax.typesetPromise) {
-            window.MathJax.typesetPromise()
-              .then(() => {
-                console.log('✅ [MathJax] 渲染成功');
-              })
-              .catch((err: any) => {
-                console.error('❌ [MathJax] 渲染失败:', err);
-                console.error('❌ [MathJax] 错误堆栈:', err.stack);
-              });
-          } else {
-            console.warn('⚠️ [MathJax] MathJax未加载或不可用');
-          }
-        } catch (err) {
-          console.error('❌ [useEffect] MathJax渲染流程异常:', err);
+      // 延迟100ms后渲染公式（参考本地版本）
+      setTimeout(() => {
+        const answerDivs = document.querySelectorAll('.message-content');
+        if (answerDivs.length > 0 && window.MathJax?.typesetPromise) {
+          window.MathJax.typesetPromise(Array.from(answerDivs))
+            .then(() => console.log('✅ [MathJax] 公式渲染完成'))
+            .catch((err: any) => console.error('❌ [MathJax] 渲染错误:', err));
         }
-      }, 150);
-      
-      return () => {
-        console.log('🧹 [useEffect] 清理定时器');
-        clearTimeout(timer);
-      };
+      }, 100);
     }
+  }, [messages]);
+  
+  // 滚动到底部
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isLoading]);
 
-  // --- 【新增】加载会话列表 ---
+  // --- 【新增】加载会话列表（从数据库）---
   useEffect(() => {
-    console.log('📋 [useEffect] 加载会话列表, mode:', mode);
-    try {
-      const allSessions = getSessions().filter(s => s.mode === mode);
-      setSessions(allSessions);
-      console.log('✅ [会话列表] 加载成功, 数量:', allSessions.length);
-    } catch (err) {
-      console.error('❌ [会话列表] 加载失败:', err);
-    }
-  }, [mode]);
+    console.log('📋 [useEffect] 加载会话列表 (数据库), mode:', mode);
+    (async () => {
+      try {
+        const allSessions = await getSessions(userId, token, mode);
+        setSessions(allSessions);
+        console.log('✅ [会话列表] 加载成功, 数量:', allSessions.length);
+      } catch (err) {
+        console.error('❌ [会话列表] 加载失败:', err);
+      }
+    })();
+  }, [mode, userId, token]);
   
-  // --- 【新增】保存当前会话到历史（包含完整消息） ---
+  // --- 【新增】保存当前会话到数据库 ---
   useEffect(() => {
     if (sessionId && chatTitle && chatImageSrc && messages.length > 0) {
-      console.log('💾 [useEffect] 保存会话, sessionId:', sessionId);
-      try {
-        saveSession({
-          sessionId,
-          title: chatTitle,
-          timestamp: Date.now(),
-          mode,
-          imageSrc: chatImageSrc,
-          messages: messages
-        });
-        // 刷新会话列表
-        setSessions(getSessions().filter(s => s.mode === mode));
-        console.log('✅ [会话保存] 成功');
-      } catch (err) {
-        console.error('❌ [会话保存] 失败:', err);
-      }
+      console.log('💾 [useEffect] 保存会话到数据库, sessionId:', sessionId);
+      (async () => {
+        try {
+          await saveSessionToDB(userId, token, {
+            sessionId,
+            title: chatTitle,
+            timestamp: Date.now(),
+            mode,
+            imageSrc: chatImageSrc,
+            messages: messages
+          });
+          // 刷新会话列表
+          const updatedSessions = await getSessions(userId, token, mode);
+          setSessions(updatedSessions);
+          console.log('✅ [会话保存] 成功');
+        } catch (err) {
+          console.error('❌ [会话保存] 失败:', err);
+        }
+      })();
     }
-  }, [sessionId, chatTitle, chatImageSrc, messages, mode]);
+  }, [sessionId, chatTitle, chatImageSrc, messages, mode, userId, token]);
 
-  // --- 核心逻辑函数 (流式版本) ---
+  // --- 核心逻辑函数（修改API URL，添加JWT认证）---
   const sendMessage = async (prompt: string, imageBlob?: Blob | File) => {
     console.log('[sendMessage] 开始, imageBlob存在:', !!imageBlob);
     
     setIsLoading(true);
     setError('');
-    setShowQuickButtons(false); // 发送消息时隐藏快捷按钮
+    setShowQuickButtons(false);
     setStatusText('正在连接AI...');
     
-    // 记录是否是第一次发送（有图片的情况）
     const isFirstMessage = !!imageBlob;
     console.log('[sendMessage] isFirstMessage:', isFirstMessage);
     
@@ -368,65 +621,54 @@ function MainApp({ mode, onBack }: MainAppProps) {
           reader.readAsDataURL(imageBlob);
         });
         console.log('[sendMessage] 图片转换为Base64完成');
-        console.log('[sendMessage] Base64长度:', imageBase64?.length);
-      } else {
-        console.log('[sendMessage] 没有图片数据');
       }
 
       // 构建请求体
       const requestBody = {
         session_id: currentSessionId,
         prompt: prompt,
-        image_base_64: imageBase64,
+        image_base64: imageBase64,
+        mode: mode // 添加模式参数
       };
 
-      console.log('[sendMessage] 请求体构建完成:');
-      console.log('  - session_id:', currentSessionId || '(新会话)');
-      console.log('  - prompt长度:', prompt.length);
-      console.log('  - has_image:', !!imageBase64);
-      console.log('[sendMessage] 发起流式请求...');
+      console.log('[sendMessage] 请求体构建完成');
+      console.log('[sendMessage] Token存在:', !!token, token ? `${token.substring(0, 20)}...` : 'undefined');
       
-      // 【临时测试】先使用非流式接口确认图片传递是否正常
-      // TODO: 测试成功后改回 /chat_stream
-      console.log('[临时] 使用非流式接口 /chat 进行测试...');
-      const response = await fetch(`${backendUrl}/chat`, {
+      // 【修改】使用数据库API，添加JWT认证
+      const response = await fetch(`${backendUrl}/api/db/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}` // JWT认证
         },
         body: JSON.stringify(requestBody),
       });
 
-      // 【临时】非流式接口处理
       const data = await response.json();
       
       console.log('[DEBUG] ========== 收到后端响应 ==========');
       console.log('[DEBUG] response.ok:', response.ok);
-      console.log('[DEBUG] response.status:', response.status);
       console.log('[DEBUG] data:', data);
-      console.log('[DEBUG] data.session_id:', data.session_id);
-      console.log('[DEBUG] data.response 长度:', data.response?.length);
-      console.log('[DEBUG] data.error:', data.error);
       console.log('[DEBUG] =====================================');
       
       // 检查HTTP错误
       if (!response.ok) {
-        // 特殊处理404（会话失效）
+        if (response.status === 401) {
+          alert('登录已过期，请重新登录');
+          onLogout();
+          return;
+        }
         if (response.status === 404) {
           throw new Error(`404: ${data.detail || '会话已失效'}`);
         }
         throw new Error(`HTTP error! status: ${response.status}, ${data.detail || ''}`);
       }
-      console.log('[临时] 收到非流式响应:', data);
       
       // 处理session_id
       if (data.session_id && !currentSessionId) {
         currentSessionId = data.session_id;
         setSessionId(data.session_id);
         if (data.title) setChatTitle(data.title);
-        
-        // 【修复】不再保存图片到localStorage（避免超出配额）
-        // 后端已存储图片，如果后端重启会话丢失，提示用户重新开始即可
         console.log('[会话] 新会话创建成功，session_id:', data.session_id);
       }
       
@@ -445,51 +687,30 @@ function MainApp({ mode, onBack }: MainAppProps) {
           const mistakeSavedNotice = `\n\n---\n\n✅ **此题已自动保存到错题本**\n\n📌 **知识点标签**：${knowledgePointsText}\n\n💡 前往"智能错题本"模块可查看和管理错题，或基于错题生成练习试卷。`;
           fullContent = fullContent.replace("[MISTAKE_DETECTED]", "").trim() + mistakeSavedNotice;
         } else {
-          // 清理特殊标记
           fullContent = fullContent.replace("[MISTAKE_DETECTED]", "").replace("[CORRECT]", "").trim();
         }
         
-        console.log('📦 [消息更新] ========== 准备更新消息 ==========');
         console.log('📦 [消息更新] fullContent 长度:', fullContent?.length);
-        console.log('📦 [消息更新] fullContent 类型:', typeof fullContent);
-        console.log('📦 [消息更新] fullContent 前100字:', fullContent?.substring(0, 100));
-        console.log('📦 [消息更新] imageBlob 存在:', !!imageBlob);
-        console.log('📦 [消息更新] 当前 messages 数量:', messages.length);
-        console.log('📦 [消息更新] mistake_saved:', data.mistake_saved);
-        console.log('📦 [消息更新] ================================================');
         
         try {
           if (!imageBlob) {
             console.log('📝 [消息更新] 追问模式 - 追加AI回答');
             setMessages(prev => {
-              console.log('  📝 [状态更新] 当前消息数:', prev.length);
               const newMessages = [...prev, { role: 'assistant' as const, content: fullContent }];
               console.log('  📝 [状态更新] 更新后消息数:', newMessages.length);
-              console.log('  📝 [状态更新] 最后一条消息长度:', newMessages[newMessages.length - 1]?.content?.length);
               return newMessages;
             });
-            console.log('✅ [消息更新] 追问模式消息更新完成');
           } else {
             console.log('📝 [消息更新] 首次提问 - 创建新消息列表');
             const newMessages: Message[] = [
               userMessage, 
               { role: 'assistant' as const, content: fullContent }
             ];
-            console.log('  📝 [状态更新] 新消息列表长度:', newMessages.length);
-            console.log('  📝 [状态更新] 用户消息:', userMessage.content.substring(0, 50));
-            console.log('  📝 [状态更新] AI消息长度:', fullContent.length);
-            
             setMessages(newMessages);
-            console.log('✅ [消息更新] 首次提问消息更新完成');
           }
         } catch (updateErr) {
           console.error('❌ [消息更新] setMessages调用失败:', updateErr);
-          console.error('❌ [消息更新] 错误详情:', {
-            name: (updateErr as Error).name,
-            message: (updateErr as Error).message,
-            stack: (updateErr as Error).stack
-          });
-          throw updateErr; // 重新抛出，让外层catch处理
+          throw updateErr;
         }
       }
 
@@ -497,15 +718,12 @@ function MainApp({ mode, onBack }: MainAppProps) {
       hasError = true;
       let detail = "未知错误";
       
-      // 检查是否是会话失效错误（404）
       if (err instanceof Error && err.message.includes('404')) {
-        console.log('[错误] 会话已失效，后端可能重启了');
+        console.log('[错误] 会话已失效');
         setError(`会话已失效（可能是服务重启），请点击右上角"新对话"按钮重新开始`);
-        // 清空session相关状态
         setSessionId(null);
         setChatTitle("新对话");
         
-        // 3秒后自动跳转到上传界面
         setTimeout(() => {
           setMessages([]);
           setIsUploading(true);
@@ -530,12 +748,10 @@ function MainApp({ mode, onBack }: MainAppProps) {
     setIsLoading(false);
     setStatusText('');
     
-    // 第一次AI回答后显示快捷按钮（只有成功时才显示）
-    if (isFirstMessage && !hasError) {
-      console.log('✅ 第一次回答完成，显示快捷按钮');
+    // 【修复】每次AI回答后都显示快捷按钮（不限于第一次）
+    if (!hasError && messages.length > 0) {
+      console.log('✅ AI回答完成，显示快捷按钮');
       setShowQuickButtons(true);
-    } else {
-      console.log('[sendMessage] 不显示按钮 - isFirstMessage:', isFirstMessage, 'hasError:', hasError);
     }
   };
 
@@ -546,8 +762,6 @@ function MainApp({ mode, onBack }: MainAppProps) {
 
   const handleInitialSend = (imageBlob: Blob | File, imageSrcForDisplay: string) => {
       console.log('[DEBUG] ========== handleInitialSend 调用 ==========');
-      console.log('[DEBUG] imageBlob:', imageBlob);
-      console.log('[DEBUG] imageSrcForDisplay 长度:', imageSrcForDisplay?.length);
       
       let promptText = '';
       // 根据模式和solveType，动态生成初始prompt
@@ -567,14 +781,9 @@ function MainApp({ mode, onBack }: MainAppProps) {
         promptText = `${basePrompt}${specificQuestion}`;
       }
       
-      console.log('[DEBUG] promptText:', promptText);
-      console.log('[DEBUG] 设置 chatImageSrc...');
       setChatImageSrc(imageSrcForDisplay);
-      console.log('[DEBUG] 设置 isUploading = false...');
-      setIsUploading(false); // 切换到聊天界面
-      console.log('[DEBUG] 调用 sendMessage...');
+      setIsUploading(false);
       sendMessage(promptText, imageBlob);
-      console.log('[DEBUG] =====================================');
   };
   
   const onSelectFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -611,20 +820,18 @@ function MainApp({ mode, onBack }: MainAppProps) {
     }, 'image/png');
   };
   
-  // --- 【新增】会话管理处理函数 ---
+  // --- 会话管理处理函数（数据库版本）---
   const handleLoadSession = async (session: SessionInfo) => {
     console.log('[会话恢复] 开始加载会话:', session.sessionId);
     
-    // 【修复】验证并清理消息数据，确保格式正确
+    // 验证并清理消息数据
     const validMessages = (session.messages || []).filter((msg): msg is Message => {
-      // 确保msg存在，有role和content字段
       return msg && 
              typeof msg === 'object' && 
              (msg.role === 'user' || msg.role === 'assistant') && 
              typeof msg.content === 'string';
     });
     
-    console.log('[会话恢复] 原始消息数:', session.messages?.length || 0);
     console.log('[会话恢复] 有效消息数:', validMessages.length);
     
     // 恢复前端状态
@@ -632,18 +839,14 @@ function MainApp({ mode, onBack }: MainAppProps) {
     setChatTitle(session.title);
     setChatImageSrc(session.imageSrc || '');
     setIsUploading(false);
-    setMessages(validMessages); // 使用验证后的消息
+    setMessages(validMessages);
     setShowSidebar(false);
-    
-    console.log('[会话提示] 如需继续追问，请确保后端服务未重启（会话仍在内存中）');
-    
-    // 【简化】不再尝试恢复后端会话
-    // 如果后端重启导致会话丢失，用户追问时会收到404错误提示，引导重新开始
   };
   
-  const handleDeleteSession = (sessionIdToDelete: string) => {
-    deleteSession(sessionIdToDelete);
-    setSessions(getSessions().filter(s => s.mode === mode));
+  const handleDeleteSession = async (sessionIdToDelete: string) => {
+    await deleteSessionFromDB(userId, token, sessionIdToDelete);
+    const updatedSessions = await getSessions(userId, token, mode);
+    setSessions(updatedSessions);
     
     console.log('[会话删除] 已删除会话:', sessionIdToDelete);
     
@@ -667,9 +870,10 @@ function MainApp({ mode, onBack }: MainAppProps) {
     setCrop(undefined);
     setShowSidebar(false);
   };
-// ==============================================================================
-// 完整 App.tsx - 第三部分: UI渲染 (JSX)
-// ==============================================================================
+
+  // ==============================================================================
+  // UI渲染（完全复制 App.tsx 的JSX）
+  // ==============================================================================
   return (
     <div className="App">
       <header className="App-header">
@@ -684,10 +888,25 @@ function MainApp({ mode, onBack }: MainAppProps) {
               ➕ 新对话
             </button>
           )}
+          <button
+            onClick={onLogout}
+            style={{
+              padding: '8px 16px',
+              background: '#dc3545',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              marginLeft: '10px'
+            }}
+          >
+            退出
+          </button>
         </div>
       </header>
       
-      {/* --- 【新增】侧边栏 --- */}
+      {/* --- 侧边栏 --- */}
       {showSidebar && (
         <>
           <div className="sidebar-overlay" onClick={() => setShowSidebar(false)}></div>
@@ -760,7 +979,7 @@ function MainApp({ mode, onBack }: MainAppProps) {
               <div className="specific-question-input">
                 <input 
                   type="text"
-                  placeholder="例如：请做第3题，或者带有“函数”字样的题目"
+                  placeholder="例如：请做第3题，或者带有「函数」字样的题目"
                   value={specificQuestion}
                   onChange={(e) => setSpecificQuestion(e.target.value)}
                 />
@@ -806,17 +1025,8 @@ function MainApp({ mode, onBack }: MainAppProps) {
           </div>
         ) : (
           <>
-            {(() => {
-              console.log('[DEBUG] ========== 渲染聊天界面 ==========');
-              console.log('[DEBUG] isUploading:', isUploading);
-              console.log('[DEBUG] messages 数量:', messages.length);
-              console.log('[DEBUG] chatImageSrc 存在:', !!chatImageSrc);
-              console.log('[DEBUG] messages:', messages);
-              console.log('[DEBUG] =======================================');
-              return null;
-            })()}
           <div className="chat-container card-container">
-            {/* --- 【新增】题目图片回显 --- */}
+            {/* 题目图片回显 */}
             {chatImageSrc && (
               <div className="solved-image-container chat-image-display">
                 <h3>题目原文</h3>
@@ -839,28 +1049,17 @@ function MainApp({ mode, onBack }: MainAppProps) {
                 console.log('✅ [渲染] 有效消息数:', validMessages.length);
                 
                 return validMessages.map((msg, index) => {
-                  console.log(`🔹 [渲染] 第${index + 1}/${validMessages.length}条消息, role: ${msg.role}, 长度: ${msg.content?.length || 0}`);
+                  console.log(`🔹 [渲染] 第${index + 1}条消息, role: ${msg.role}, 长度: ${msg.content?.length || 0}`);
                   
-                  // 安全地解析Markdown，添加容错处理
+                  // 安全地解析Markdown
                   let htmlContent = '';
                   try {
                     const contentToRender = msg.content || '';
-                    console.log(`  📝 [Markdown] 准备解析, 前50字: ${contentToRender.substring(0, 50)}...`);
-                    
                     htmlContent = marked.parse(contentToRender) as string;
-                    
-                    console.log(`  ✅ [Markdown] 解析成功, HTML长度: ${htmlContent.length}`);
+                    console.log(`  ✅ [Markdown] 解析成功`);
                   } catch (err) {
-                    console.error(`  ❌ [Markdown] 解析失败 (消息${index + 1}):`, err);
-                    console.error(`  ❌ [Markdown] 错误详情:`, {
-                      message: (err as Error).message,
-                      stack: (err as Error).stack,
-                      content: msg.content?.substring(0, 100)
-                    });
-                    
-                    // 如果解析失败，使用原始文本
+                    console.error(`  ❌ [Markdown] 解析失败:`, err);
                     htmlContent = (msg.content || '').replace(/\n/g, '<br/>');
-                    console.log(`  🔄 [Markdown] 降级为纯文本, 长度: ${htmlContent.length}`);
                   }
                   
                   try {
@@ -874,18 +1073,11 @@ function MainApp({ mode, onBack }: MainAppProps) {
                       </div>
                     );
                   } catch (renderErr) {
-                    console.error(`  ❌ [渲染] JSX渲染失败 (消息${index + 1}):`, renderErr);
-                    // 返回错误占位符
+                    console.error(`  ❌ [渲染] JSX渲染失败:`, renderErr);
                     return (
                       <div key={index} className="message-bubble-wrapper assistant">
                         <div className="message-bubble assistant" style={{ backgroundColor: '#fff3cd', border: '1px solid #ffc107' }}>
                           <p>⚠️ 此消息渲染失败</p>
-                          <details>
-                            <summary>查看原始内容</summary>
-                            <pre style={{ whiteSpace: 'pre-wrap', fontSize: '12px' }}>
-                              {msg.content?.substring(0, 500)}
-                            </pre>
-                          </details>
                         </div>
                       </div>
                     );
@@ -910,16 +1102,12 @@ function MainApp({ mode, onBack }: MainAppProps) {
                   </div>
                 </div>
               )}
-              {/* 我们不再需要手动的"继续回答"按钮了！ */}
               <div ref={chatEndRef}></div>
             </div>
-            {/* --- 【核心修改】: 只有在有回答后才显示输入框 --- */}
+            {/* 只有在有回答后才显示输入框 */}
             {messages.length > 0 && !isLoading && (
               <>
-                {/* 调试信息 */}
-                {console.log('[UI渲染] showQuickButtons:', showQuickButtons, 'messages.length:', messages.length, 'isLoading:', isLoading)}
-                
-                {/* --- 【新增】快捷按钮 --- */}
+                {/* 快捷按钮 */}
                 {showQuickButtons && (
                   <div className="quick-buttons-container">
                     <button 
@@ -965,31 +1153,62 @@ function MainApp({ mode, onBack }: MainAppProps) {
   );
 }
 
-// --- 顶层App组件 (负责模式切换和重置) ---
+// --- 顶层App组件（添加登录状态管理）---
 function AppCore() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [userId, setUserId] = useState('');
+  const [token, setToken] = useState('');
   const [mode, setMode] = useState<'solve' | 'review' | 'mistakeBook' | null>(null);
+
+  // 检查本地存储的登录状态
+  useEffect(() => {
+    const savedToken = localStorage.getItem('token');
+    const savedUserId = localStorage.getItem('userId');
+    if (savedToken && savedUserId) {
+      setToken(savedToken);
+      setUserId(savedUserId);
+      setIsLoggedIn(true);
+    }
+  }, []);
+
+  const handleLoginSuccess = (uid: string, tok: string) => {
+    setUserId(uid);
+    setToken(tok);
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('userId');
+    setIsLoggedIn(false);
+    setUserId('');
+    setToken('');
+    setMode(null);
+  };
 
   const handleBackToModeSelection = () => {
     console.log('🔙 [App] 返回模式选择');
-    // 返回时，清除所有模式的会话记录
-    localStorage.removeItem('sessionId_solve');
-    localStorage.removeItem('chatTitle_solve');
-    localStorage.removeItem('sessionId_review');
-    localStorage.removeItem('chatTitle_review');
     setMode(null);
   };
-  
-  if (!mode) {
-    console.log('🎯 [App] 显示模式选择器');
-    return <ModeSelector onSelectMode={setMode} />;
+
+  // 如果未登录，显示登录界面
+  if (!isLoggedIn) {
+    return <AuthScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
+  // 如果已登录但未选择模式，显示模式选择器
+  if (!mode) {
+    console.log('🎯 [App] 显示模式选择器');
+    return <ModeSelector onSelectMode={setMode} onLogout={handleLogout} />;
+  }
+
+  // 显示主应用
   console.log('🎯 [App] 当前模式:', mode);
-  return <MainApp mode={mode} onBack={handleBackToModeSelection} />;
+  return <MainApp mode={mode} onBack={handleBackToModeSelection} userId={userId} token={token} onLogout={handleLogout} />;
 }
 
 // 用ErrorBoundary包裹整个App
-function App() {
+function AppDB() {
   return (
     <ErrorBoundary>
       <AppCore />
@@ -997,4 +1216,4 @@ function App() {
   );
 }
 
-export default App;
+export default AppDB;
